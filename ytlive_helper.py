@@ -24,11 +24,6 @@ hdl_formatter = logging.Formatter('%(asctime)s %(filename)s:%(lineno)5d %(funcNa
 hdl.setFormatter(hdl_formatter)
 logger.addHandler(hdl)
 
-# TODO 
-# UCaUQWvZ6gA7yPlbeA8Q872g (24文字？)
-# 管理者アカウントを登録させる
-# NGワード、NGユーザ登録機能
-
 class Settings:
     def __init__(self, lx=0, ly=0, manager=[], pushword=['お題 ', 'お題　', 'リク ', 'リク　'], pullword=['リクあり', '消化済'], ngword=[], req=[], url='', push_manager_only=False, pull_manager_only=False):
         self.lx       = lx
@@ -204,7 +199,7 @@ class GetComment:
         layout.append([sg.Menubar(menuitems, key='menu')])
         layout.append([sg.Text('配信URL'), sg.Input(self.settings.url, key='input_url', size=(50,1)), sg.Button('告知', key='btn_tweet', enable_events=True), sg.Button('start', key='btn_start', enable_events=True)])
         layout.append([sg.Text('', size=(10,1), key='is_active', text_color="#ff0000"), sg.Text('Title:'), sg.Text('', key='live_title')])
-        layout.append([sg.Text('TODOリスト'), sg.Text('手動入力用:'), sg.Input('', key='input_req')])
+        layout.append([sg.Text('お題リスト'), sg.Text('手動入力用:'), sg.Input('', key='input_req')])
         layout.append([sg.Listbox(self.settings.req, key='list_req', size=(80, 10)), sg.Button('追加', key='btn_add_req', enable_events=True), sg.Button('削除', key='btn_delete_req', enable_events=True), sg.Button('リセット', key='btn_reset_req', enable_events=True)])
         layout.append([sg.Table(
             []
