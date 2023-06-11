@@ -103,7 +103,7 @@ class GetComment:
                         req = c.message
                         for q in self.settings.pushword: # 全pushwordを先頭から取り除く
                             req = re.sub(f'\A{q}', '', req).strip()
-                        #self.settings.req.append(f"{len(self.settings.req)}: {req} ({c.author.name})")
+                        req = re.sub('<[^>]*?>', '', req)
                         req = req.replace('&', '&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;').replace("'",'&apos;')
                         self.settings.req.append(f"{req} ({c.author.name}さん)")
                         self.window['list_req'].update(self.settings.req)
