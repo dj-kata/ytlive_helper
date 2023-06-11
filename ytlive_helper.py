@@ -50,6 +50,8 @@ class GetComment:
             with open('settings.json', 'r') as f:
                 tmp = json.load(f)
                 self.settings = Settings(**tmp)
+        else:
+            self.settings = Settings()
 
     # icon用
     def ico_path(self, relative_path):
@@ -284,6 +286,9 @@ class GetComment:
                     th = False
                     self.window['is_active'].update('')
                     self.window['live_title'].update('')
+                # 画面切り替え前に必要な情報を保存しておく
+                self.settings.url = val['input_url']
+                self.settings.lx,self.settings.ly = self.window.current_location()
                 self.gui_settings()
             elif ev == '管理者IDに追加':
                 if len(val['table_comment']) > 0:
@@ -291,7 +296,7 @@ class GetComment:
                     key = f"{tmp[0]}({tmp[3]})"
                     if key not in self.settings.manager:
                         self.settings.manager.append(key)
-                        sg.popup(f"{tmp[0]}を管理者IDに追加しました。")
+                        sg.popup(f"{tmp[0]}を管理者IDに追加しました。\n反映する場合は、コメント取得処理をstop→startし直してください。")
                     else:
                         sg.popup(f"{tmp[0]}は既に管理者に追加されています。")
                 else:
