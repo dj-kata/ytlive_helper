@@ -91,6 +91,7 @@ todolist.htmlの77行目付近について、
 登録したい人のコメントをクリックしてから、  
 右クリックメニューの**管理者IDに追加**を押してください。  
 (コメント取得スレッド実行中には管理者ID一覧を修正できないので、反映したい場合は一度**stop**を押してから再度**start**してください。)
+![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/d36691f3-9f88-4dd4-9de1-a83d7e90b789)
 
 設定された管理者IDについては、設定画面から以下のように確認できます。  
 ![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/ae46aaee-fd00-45a0-9322-5b474331f2f5)
