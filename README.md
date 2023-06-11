@@ -125,7 +125,7 @@ ytlive_helper.exeを実行します。
 ```":smiling_face_with_halo: "```を登録しておけば、以下のようなコメントを拾うことができます。  
 ![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/a3acbb86-7ab3-46cb-9a35-026e3b030b29)
 
-お題部分については、XSS対策でHTMLタグがあっても削除するようにしています。
+お題部分については、HTMLタグがあっても削除するようにしています(XSS対策)。
 
 ## お題リスト削除時
 以下の形式に対応しています
