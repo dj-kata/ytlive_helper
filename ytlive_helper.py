@@ -86,12 +86,17 @@ class GetComment:
         while True:
             print('main thread start')
             logger.debug('main thread start')
-            livechat = pytchat.create(video_id = self.liveid, interruptable=False)
-            logger.debug(f'self.manager_id = {self.manager_id}, self.liveid = {self.liveid}')
+            try:
+                livechat = pytchat.create(video_id = self.liveid, interruptable=False)
+                logger.debug(f'self.manager_id = {self.manager_id}, self.liveid = {self.liveid}')
+            except Exception:
+                logger.debug(traceback.format_exc())
+                time.sleep(1)
+                continue
             while livechat.is_alive():
                 chatdata = livechat.get()
                 for c in chatdata.items:
-                    print(c.author.name, c.author.channelId, c.message, )
+                    logger.debug(f"{c.author.name}({c.author.channelId}):{c.message}")
                     self.table_comment.append([c.author.name, c.message, c.datetime, c.author.channelId])
                     # TKinterの機能を使ってコメント用リストを差分更新
                     self.window['table_comment'].Widget.insert('', 'end', iid=len(self.table_comment),values=[c.author.name, c.message, c.datetime, c.author.channelId])
@@ -233,7 +238,7 @@ class GetComment:
         th = False
         while True:
             ev, val = self.window.read()
-            logger.debug(f"ev = {ev}, val={val}")
+            #logger.debug(f"ev = {ev}, val={val}")
             if ev in (sg.WIN_CLOSED, 'Escape:27', '-WINDOW CLOSE ATTEMPTED-', 'btn_close_setting', '終了'):
                 if self.mode == 'settings':
                     self.settings.push_manager_only = val['push_manager_only']
