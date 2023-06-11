@@ -18,7 +18,7 @@ https://twitter.com/cold_planet_/status/1667364119652237312
 - ウイルス対策ソフト: Windows Defender
 
 # インストール方法
-Releaseページから最新のytlive_helper.zipをダウンロードし、  
+[Releaseページ](https://github.com/dj-kata/ytlive_helper/releases)から最新のytlive_helper.zipをダウンロードし、  
 好きなフォルダに解凍してください。
 
 以下のファイルが含まれています。
