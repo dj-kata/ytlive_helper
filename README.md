@@ -4,6 +4,7 @@ YoutubeLiveの補助用ツールです。
 
 動作イメージ  
 https://twitter.com/cold_planet_/status/1667364119652237312
+![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/3ac9ffc0-e52c-46ba-aeb3-dbaea393214a)
 
 本ツールの良い所は以下。  
 - 音ゲー配信などでリスナーから貰ったお題を配信画面に表示できる
