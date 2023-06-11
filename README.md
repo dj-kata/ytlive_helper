@@ -65,6 +65,7 @@ todolist.htmlの77行目付近について、
 ```
 
 ## 2. お題リストの登録・削除用ワードを設定する
+ytlive_helper.exeを実行します。  
 メニューバー内のファイル→設定から設定画面を開きます。  
 必要に応じて、リスト登録・削除のためのwordを登録してください。
 ![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/87d3a735-9ded-46b8-add2-f0a4f361e72a)
