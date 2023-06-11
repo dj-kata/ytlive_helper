@@ -183,7 +183,7 @@ class GetComment:
         #layout.append([sg.Column([[sg.Text('NGワード'), sg.Listbox([], size=(50,10), key='list_ngword')]], vertical_scroll_only=True),])
         if self.window != False:
             self.window.close()
-        self.window = sg.Window('YoutubeLive Helper'
+        self.window = sg.Window('YoutubeLive Helper 設定'
                                 ,layout
                                 ,grab_anywhere=True
                                 ,return_keyboard_events=True
