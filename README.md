@@ -47,6 +47,8 @@ font-family:"Mochiy Pop P One";
 }
 ```
 
+![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/436c1a00-e27b-4c72-9292-a34ee8e3f27a)
+
 ## 2. お題リストの登録・削除用ワードを設定する
 ## 3. (必要であれば)管理者IDを設定する
 ## 4. URLを入力し、コメント取得を開始する
