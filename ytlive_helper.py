@@ -178,7 +178,7 @@ class GetComment:
             ]
         ]
         layout.append([sg.Frame('リスト登録用word登録', layout=layout_trigger)])
-        layout.append([sg.Column([[sg.Text('管理者ID'), sg.Listbox(self.settings.manager, size=(50,5), key='list_manager')]], vertical_scroll_only=True),sg.Button('削除', key='btn_delete_manager', enable_events=True)])
+        layout.append([sg.Column([[sg.Text('管理者ID', tooltip='メイン画面で、コメントを選択して右クリック→管理者IDに追加で登録できます。'), sg.Listbox(self.settings.manager, size=(50,5), key='list_manager')]], vertical_scroll_only=True),sg.Button('削除', key='btn_delete_manager', enable_events=True)])
         layout.append([sg.Button('閉じる', enable_events=True, key='btn_close_setting')])
         #layout.append([sg.Column([[sg.Text('NGワード'), sg.Listbox([], size=(50,10), key='list_ngword')]], vertical_scroll_only=True),])
         if self.window != False:
