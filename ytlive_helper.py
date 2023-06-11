@@ -257,16 +257,18 @@ class GetComment:
                     self.window['is_active'].update('')
                     self.window['live_title'].update('')
                     self.window[ev].update('start')
-            elif ev == 'btn_tweet': # 告知する
-                self.get_liveid(self.window['input_url'].get())
-                regular_url = f"https://www.youtube.com/watch?v={self.liveid}"
-                r = requests.get(regular_url)
-                soup = BeautifulSoup(r.text,features="html.parser")
-                title = re.sub(' - YouTube\Z', '', soup.find('title').text)
-                self.window['live_title'].update(title)
-                regular_url = f"https://www.youtube.com/watch?v={self.liveid}"
-                encoded_title = urllib.parse.quote(f"{title}\n{regular_url}\n")
-                webbrowser.open(f"https://twitter.com/intent/tweet?text={encoded_title}")
+            elif ev in ('btn_tweet', '配信を告知する'): # 告知する
+                try:
+                    self.get_liveid(self.window['input_url'].get())
+                    regular_url = f"https://www.youtube.com/watch?v={self.liveid}"
+                    r = requests.get(regular_url)
+                    soup = BeautifulSoup(r.text,features="html.parser")
+                    title = re.sub(' - YouTube\Z', '', soup.find('title').text)
+                    regular_url = f"https://www.youtube.com/watch?v={self.liveid}"
+                    encoded_title = urllib.parse.quote(f"{title}\n{regular_url}\n")
+                    webbrowser.open(f"https://twitter.com/intent/tweet?text={encoded_title}")
+                except Exception:
+                    sg.popup('対応していないURLです。\nYoutubeLiveのURLを入力してください。')
             elif ev == 'MouseWheel:Up':
                 self.autoscroll = False
             elif ev == 'MouseWheel:Down':
