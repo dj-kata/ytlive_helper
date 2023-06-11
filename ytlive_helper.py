@@ -30,7 +30,7 @@ logger.addHandler(hdl)
 # NGワード、NGユーザ登録機能
 
 class Settings:
-    def __init__(self, lx=0, ly=0, manager=[], pushword=[], pullword=[], ngword=[], req=[], url='', push_manager_only=False, pull_manager_only=False):
+    def __init__(self, lx=0, ly=0, manager=[], pushword=['お題 ', 'お題　', 'リク ', 'リク　'], pullword=['リクあり', '消化済'], ngword=[], req=[], url='', push_manager_only=False, pull_manager_only=False):
         self.lx       = lx
         self.ly       = ly
         self.manager  = manager
