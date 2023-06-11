@@ -30,7 +30,7 @@ logger.addHandler(hdl)
 # NGワード、NGユーザ登録機能
 
 class Settings:
-    def __init__(self, lx=0, ly=0, manager=[], pushword=[], pullword=[], ngword=[], req=[], url=''):
+    def __init__(self, lx=0, ly=0, manager=[], pushword=[], pullword=[], ngword=[], req=[], url='', push_manager_only=False, pull_manager_only=False):
         self.lx       = lx
         self.ly       = ly
         self.manager  = manager
@@ -39,6 +39,8 @@ class Settings:
         self.ngword   = ngword
         self.req      = req
         self.url      = url
+        self.push_manager_only = push_manager_only
+        self.pull_manager_only = pull_manager_only
 
     def save(self):
         with open('settings.json', 'w') as f:
@@ -99,16 +101,17 @@ class GetComment:
                     if self.autoscroll:
                         self.window['table_comment'].set_vscroll_position(len(self.table_comment)-1)
                     # リクエスト追加処理
-                    if c.message.startswith(tuple(self.settings.pushword)):
-                        req = c.message
-                        for q in self.settings.pushword: # 全pushwordを先頭から取り除く
-                            req = re.sub(f'\A{q}', '', req).strip()
-                        req = re.sub('<[^>]*?>', '', req)
-                        req = req.replace('&', '&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;').replace("'",'&apos;')
-                        self.settings.req.append(f"{req} ({c.author.name}さん)")
-                        self.window['list_req'].update(self.settings.req)
+                    if (not self.settings.push_manager_only) or (self.settings.push_manager_only and (c.author.channelId in self.manager_id)): # 許可されたIDからしか受け付けない
+                        if c.message.startswith(tuple(self.settings.pushword)):
+                            req = c.message
+                            for q in self.settings.pushword: # 全pushwordを先頭から取り除く
+                                req = re.sub(f'\A{q}', '', req).strip()
+                            req = re.sub('<[^>]*?>', '', req)
+                            req = req.replace('&', '&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;').replace("'",'&apos;')
+                            self.settings.req.append(f"{req} ({c.author.name}さん)")
+                            self.window['list_req'].update(self.settings.req)
                     # リクエスト削除処理
-                    if c.author.channelId in self.manager_id: # 許可されたIDからしか受け付けない
+                    if (not self.settings.pull_manager_only) or (self.settings.pull_manager_only and (c.author.channelId in self.manager_id)): # 許可されたIDからしか受け付けない
                         for q in self.settings.pullword: 
                             if q in c.message: # 削除用ワードを含む(先頭一致ではない)
                                 submsg = re.findall('\S+', c.message.strip())
@@ -157,11 +160,13 @@ class GetComment:
         layout = []
         layout_push_description = [
             [sg.Text('リスト登録用word', tooltip='ここに書いた単語が先頭にあるメッセージをリクエストと扱う。\n例:"リクエスト"を登録している場合、"リクエスト セピアの軌跡"を拾ってセピアの軌跡をリストに登録する')],
-            [sg.Button('登録', key='btn_add_push', enable_events=True),sg.Button('削除', key='btn_delete_push', enable_events=True)]
+            [sg.Button('登録', key='btn_add_push', enable_events=True),sg.Button('削除', key='btn_delete_push', enable_events=True)],
+            [sg.Checkbox('管理者IDのみ許可する', key='push_manager_only', default=self.settings.push_manager_only)]
         ]
         layout_pull_description = [
             [sg.Text('リスト削除用word', tooltip='ここに書いた単語が先頭にあるメッセージをリスト削除命令と扱う。\n例:"リクあり"を登録している場合、使用可能IDによる"リクありでした！"コメを拾ってリストの一番上を削除する')],
-            [sg.Button('登録', key='btn_add_pull', enable_events=True),sg.Button('削除', key='btn_delete_pull', enable_events=True)]
+            [sg.Button('登録', key='btn_add_pull', enable_events=True),sg.Button('削除', key='btn_delete_pull', enable_events=True)],
+            [sg.Checkbox('管理者IDのみ許可する', key='pull_manager_only', default=self.settings.pull_manager_only)]
         ]
         layout_trigger =[
             [sg.Text('入力した単語を登録:'), sg.Input('', key='input_trigger')],
@@ -173,7 +178,8 @@ class GetComment:
             ]
         ]
         layout.append([sg.Frame('リスト登録用word登録', layout=layout_trigger)])
-        layout.append([sg.Column([[sg.Text('削除コマンド使用可能ID'), sg.Listbox(self.settings.manager, size=(50,5), key='list_manager')]], vertical_scroll_only=True),sg.Button('削除', key='btn_delete_manager', enable_events=True)])
+        layout.append([sg.Column([[sg.Text('管理者ID'), sg.Listbox(self.settings.manager, size=(50,5), key='list_manager')]], vertical_scroll_only=True),sg.Button('削除', key='btn_delete_manager', enable_events=True)])
+        layout.append([sg.Button('閉じる', enable_events=True, key='btn_close_setting')])
         #layout.append([sg.Column([[sg.Text('NGワード'), sg.Listbox([], size=(50,10), key='list_ngword')]], vertical_scroll_only=True),])
         if self.window != False:
             self.window.close()
@@ -193,7 +199,7 @@ class GetComment:
         self.mode = 'main'
         sg.theme('SystemDefault')
         menuitems = [['ファイル',['設定','配信を告知する','終了']]]
-        right_click_menu = ['&Right', ['管理者IDに追加', 'NGユーザ登録']]
+        right_click_menu = ['&Right', ['管理者IDに追加']]
         layout = []
         layout.append([sg.Menubar(menuitems, key='menu')])
         layout.append([sg.Text('配信URL'), sg.Input(self.settings.url, key='input_url', size=(50,1)), sg.Button('告知', key='btn_tweet', enable_events=True), sg.Button('start', key='btn_start', enable_events=True)])
@@ -231,8 +237,10 @@ class GetComment:
         while True:
             ev, val = self.window.read()
             logger.debug(f"ev = {ev}, val={val}")
-            if ev in (sg.WIN_CLOSED, 'Escape:27', '-WINDOW CLOSE ATTEMPTED-', 'btn_close_info', 'btn_close_setting', '終了'):
+            if ev in (sg.WIN_CLOSED, 'Escape:27', '-WINDOW CLOSE ATTEMPTED-', 'btn_close_setting', '終了'):
                 if self.mode == 'settings':
+                    self.settings.push_manager_only = val['push_manager_only']
+                    self.settings.pull_manager_only = val['pull_manager_only']
                     self.gui_main()
                 else:
                     if th != False:
@@ -288,6 +296,11 @@ class GetComment:
                     key = f"{tmp[0]}({tmp[3]})"
                     if key not in self.settings.manager:
                         self.settings.manager.append(key)
+                        sg.popup(f"{tmp[0]}を管理者IDに追加しました。")
+                    else:
+                        sg.popup(f"{tmp[0]}は既に管理者に追加されています。")
+                else:
+                    sg.popup(f"コメントが選択されていません。")
             elif ev == 'btn_add_push':
                 if val['input_trigger'] != "" and val['input_trigger'] not in self.settings.pushword:
                     self.settings.pushword.append(val['input_trigger'])
