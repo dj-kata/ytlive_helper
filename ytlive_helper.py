@@ -1,5 +1,6 @@
-from chat_downloader import ChatDownloader
-import time
+#from chat_downloader import ChatDownloader
+from chat_downloader_mod.chat_downloader.chat_downloader import ChatDownloader
+# import time
 import sys, os
 import re
 import tkinter
@@ -8,7 +9,7 @@ import threading
 import json
 import webbrowser, urllib, requests
 from bs4 import BeautifulSoup
-import datetime
+import datetime, time
 
 import logging, logging.handlers
 import traceback
@@ -54,6 +55,7 @@ class Message:
 
 class GetComment:
     def __init__(self):
+        self.cdl = False
         self.window = False
         self.autoscroll  = True
         self.table_comment = []
@@ -98,13 +100,14 @@ class GetComment:
             print('main thread start')
             logger.debug('main thread start')
             try:
-                livechat = ChatDownloader().get_chat(f"https://www.youtube.com/watch?v={self.liveid}")
+                self.cdl = ChatDownloader()
+                self.livechat = self.cdl.get_chat(f"https://www.youtube.com/watch?v={self.liveid}")
                 logger.debug(f'self.manager_id = {self.manager_id}, self.liveid = {self.liveid}')
             except Exception:
                 logger.debug(traceback.format_exc())
                 time.sleep(1)
                 #continue
-            for msg in livechat:
+            for msg in self.livechat:
                 c = Message(msg)
                 logger.debug(f"{c.author_name}({c.author_id}):{c.message}")
                 self.table_comment.append([c.author_name, c.message, c.timestamp, c.author_id])
@@ -257,6 +260,7 @@ class GetComment:
                     self.gui_main()
                 else:
                     if th != False:
+                        del self.livechat
                         self.stop_thread = True
                         th.join()
                     self.settings.lx,self.settings.ly = self.window.current_location()
@@ -272,6 +276,7 @@ class GetComment:
                     self.window['is_active'].update('●active')
                 else:
                     self.stop_thread = True
+                    del self.livechat
                     th.join()
                     del th
                     th = False
