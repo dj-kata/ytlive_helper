@@ -45,7 +45,7 @@ class Settings:
 
 class GetComment:
     def __init__(self):
-        self.cdl = False
+        self.livechat = False
         self.window = False
         self.autoscroll  = True
         self.table_comment = []
@@ -86,71 +86,65 @@ class GetComment:
 
         self.table_comment = []
         self.window['table_comment'].update(self.table_comment)
-        while True:
-            print('main thread start')
-            logger.debug('main thread start')
-            try:
-                livechat = pytchat.create(video_id = self.liveid, interruptable=False)
-                logger.debug(f'self.manager_id = {self.manager_id}, self.liveid = {self.liveid}')
-            except Exception:
-                logger.debug(traceback.format_exc())
-                time.sleep(1)
-                continue
-            while livechat.is_alive():
-                chatdata = livechat.get()
-                for c in chatdata.items:
-                    logger.debug(f"{c.author.name}({c.author.channelId}):{c.message}")
-                    self.table_comment.append([c.author.name, c.message, c.datetime, c.author.channelId])
-                    # TKinterの機能を使ってコメント用リストを差分更新
-                    self.window['table_comment'].Widget.insert('', 'end', iid=len(self.table_comment),values=[c.author.name, c.message, c.datetime, c.author.channelId])
-                    if self.autoscroll:
-                        self.window['table_comment'].set_vscroll_position(len(self.table_comment)-1)
-                    # リクエスト追加処理
-                    if (not self.settings.push_manager_only) or (self.settings.push_manager_only and (c.author.channelId in self.manager_id)): # 許可されたIDからしか受け付けない
-                        if c.message.startswith(tuple(self.settings.pushword)):
-                            req = c.message
-                            for q in self.settings.pushword: # 全pushwordを先頭から取り除く
-                                req = re.sub(f'\A{q}', '', req).strip()
-                            req = re.sub('<[^>]*?>', '', req)
-                            req = req.replace('&', '&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;').replace("'",'&apos;')
-                            self.settings.req.append(f"{req} ({c.author.name}さん)")
-                            self.window['list_req'].update(self.settings.req)
-                    # リクエスト削除処理
-                    if (not self.settings.pull_manager_only) or (self.settings.pull_manager_only and (c.author.channelId in self.manager_id)): # 許可されたIDからしか受け付けない
-                        for q in self.settings.pullword: 
-                            if q in c.message: # 削除用ワードを含む(先頭一致ではない)
-                                submsg = re.findall('\S+', c.message.strip())
-                                if len(submsg) == 1: # 削除用ワードのみのコメント
-                                    self.settings.req.pop(0)
+        print('main thread start')
+        logger.debug('main thread start')
+        try:
+            self.livechat = pytchat.create(video_id = self.liveid, interruptable=False)
+            logger.debug(f'self.manager_id = {self.manager_id}, self.liveid = {self.liveid}')
+        except Exception:
+            logger.debug(traceback.format_exc())
+            time.sleep(1)
+        while self.livechat.is_alive():
+            chatdata = self.livechat.get()
+            for c in chatdata.items:
+                logger.debug(f"{c.author.name}({c.author.channelId}):{c.message}")
+                self.table_comment.append([c.author.name, c.message, c.datetime, c.author.channelId])
+                # TKinterの機能を使ってコメント用リストを差分更新
+                self.window['table_comment'].Widget.insert('', 'end', iid=len(self.table_comment),values=[c.author.name, c.message, c.datetime, c.author.channelId])
+                if self.autoscroll:
+                    self.window['table_comment'].set_vscroll_position(len(self.table_comment)-1)
+                # リクエスト追加処理
+                if (not self.settings.push_manager_only) or (self.settings.push_manager_only and (c.author.channelId in self.manager_id)): # 許可されたIDからしか受け付けない
+                    if c.message.startswith(tuple(self.settings.pushword)):
+                        req = c.message
+                        for q in self.settings.pushword: # 全pushwordを先頭から取り除く
+                            req = re.sub(f'\A{q}', '', req).strip()
+                        req = re.sub('<[^>]*?>', '', req)
+                        req = req.replace('&', '&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;').replace("'",'&apos;')
+                        self.settings.req.append(f"{req} ({c.author.name}さん)")
+                        self.window['list_req'].update(self.settings.req)
+                # リクエスト削除処理
+                if (not self.settings.pull_manager_only) or (self.settings.pull_manager_only and (c.author.channelId in self.manager_id)): # 許可されたIDからしか受け付けない
+                    for q in self.settings.pullword: 
+                        if q in c.message: # 削除用ワードを含む(先頭一致ではない)
+                            submsg = re.findall('\S+', c.message.strip())
+                            if len(submsg) == 1: # 削除用ワードのみのコメント
+                                self.settings.req.pop(0)
+                                self.window['list_req'].update(self.settings.req)
+                            else: # 削除ワード subcmdの場合(ややこしいので1つしか受け付けない)
+                                try:
+                                    excmd = submsg[1] # 追加コマンド, 削除 1-3なら1-3の部分
+                                    if ('-' in excmd) or ('ー' in excmd):
+                                        st,ed = list(map(int, re.findall('\d+', excmd)))
+                                        for ii in range(st, ed+1):
+                                            if len(self.settings.req) > st-1:
+                                                self.settings.req.pop(st-1)
+                                    else:
+                                        st = int(excmd) - 1
+                                        self.settings.req.pop(st)
                                     self.window['list_req'].update(self.settings.req)
-                                else: # 削除ワード subcmdの場合(ややこしいので1つしか受け付けない)
-                                    try:
-                                        excmd = submsg[1] # 追加コマンド, 削除 1-3なら1-3の部分
-                                        if ('-' in excmd) or ('ー' in excmd):
-                                            st,ed = list(map(int, re.findall('\d+', excmd)))
-                                            for ii in range(st, ed+1):
-                                                if len(self.settings.req) > st-1:
-                                                    self.settings.req.pop(st-1)
-                                        else:
-                                            st = int(excmd) - 1
-                                            self.settings.req.pop(st)
-                                        self.window['list_req'].update(self.settings.req)
-                                    except Exception:
-                                        logger.debug(traceback.format_exc())
-                                        continue
-                                break
-                    self.gen_xml()
+                                except Exception:
+                                    logger.debug(traceback.format_exc())
+                                    continue
+                            break
+                self.gen_xml()
 
-                if self.stop_thread:
-                    break
-                time.sleep(1)
             if self.stop_thread:
                 break
-            else:
-                logger.debug('再接続します')
-                del livechat
+            time.sleep(1)
         print('### main thread end!!!')
         logger.debug('### main thread end!!!')
+        self.window.write_event_value('-ENDTHREAD-', ' ')
 
     def gen_xml(self):
         with open('todo.xml', 'w', encoding='utf-8') as f:
@@ -249,10 +243,7 @@ class GetComment:
                     self.settings.pull_manager_only = val['pull_manager_only']
                     self.gui_main()
                 else:
-                    if th != False:
-                        del self.livechat
-                        self.stop_thread = True
-                        th.join()
+                    self.stop_thread = True
                     self.settings.lx,self.settings.ly = self.window.current_location()
                     self.settings.url = val['input_url']
                     self.settings.save()
@@ -266,13 +257,24 @@ class GetComment:
                     self.window['is_active'].update('●active')
                 else:
                     self.stop_thread = True
-                    del self.livechat
+            elif ev == '-ENDTHREAD-':
+                logger.debug(f'スレッドが終了しました (stop_thread={self.stop_thread})')
+                if th != False:
                     th.join()
                     del th
+                    del self.livechat
                     th = False
+                time.sleep(10)
+
+                if self.stop_thread: # 終了処理
                     self.window['is_active'].update('')
                     self.window['live_title'].update('')
-                    self.window[ev].update('start')
+                    self.window['btn_start'].update('start')
+                else: # 強制終了の場合
+                    th = threading.Thread(target=self.get_comment, daemon=True)
+                    th.start()
+                    self.window['btn_start'].update('stop')
+                    self.window['is_active'].update('●active')
             elif ev in ('btn_tweet', '配信を告知する'): # 告知する
                 try:
                     self.get_liveid(self.window['input_url'].get())
@@ -351,6 +353,5 @@ class GetComment:
             elif ev == 'keep_on_top':
                 self.settings.keep_on_top = val[ev]
                 self.window.TKroot.wm_attributes("-topmost", val[ev])
-
 a = GetComment()
 a.main()
