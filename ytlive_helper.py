@@ -26,7 +26,7 @@ hdl.setFormatter(hdl_formatter)
 logger.addHandler(hdl)
 
 class Settings:
-    def __init__(self, lx=0, ly=0, manager=[], pushword=['お題 ', 'お題　', 'リク ', 'リク　'], pullword=['リクあり', '消化済'], ngword=[], req=[], url='', push_manager_only=False, pull_manager_only=False):
+    def __init__(self, lx=0, ly=0, manager=[], pushword=['お題 ', 'お題　', 'リク ', 'リク　'], pullword=['リクあり', '消化済'], ngword=[], req=[], url='', push_manager_only=False, pull_manager_only=False, keep_on_top=False):
         self.lx       = lx
         self.ly       = ly
         self.manager  = manager
@@ -37,6 +37,7 @@ class Settings:
         self.url      = url
         self.push_manager_only = push_manager_only
         self.pull_manager_only = pull_manager_only
+        self.keep_on_top = keep_on_top
 
     def save(self):
         with open('settings.json', 'w') as f:
@@ -206,7 +207,7 @@ class GetComment:
         right_click_menu = ['&Right', ['管理者IDに追加']]
         layout = []
         layout.append([sg.Menubar(menuitems, key='menu')])
-        layout.append([sg.Text('配信URL'), sg.Input(self.settings.url, key='input_url', size=(50,1)), sg.Button('告知', key='btn_tweet', enable_events=True), sg.Button('start', key='btn_start', enable_events=True)])
+        layout.append([sg.Text('配信URL'), sg.Input(self.settings.url, key='input_url', size=(50,1)), sg.Button('告知', key='btn_tweet', enable_events=True), sg.Button('start', key='btn_start', enable_events=True), sg.Checkbox('最前面に固定する', key='keep_on_top', enable_events=True, default=self.settings.keep_on_top)])
         layout.append([sg.Text('', size=(10,1), key='is_active', text_color="#ff0000"), sg.Text('Title:'), sg.Text('', key='live_title')])
         layout.append([sg.Text('お題リスト'), sg.Text('手動入力用:'), sg.Input('', key='input_req')])
         layout.append([sg.Listbox(self.settings.req, key='list_req', size=(80, 10)), sg.Button('追加', key='btn_add_req', enable_events=True), sg.Button('削除', key='btn_delete_req', enable_events=True), sg.Button('リセット', key='btn_reset_req', enable_events=True)])
@@ -232,6 +233,7 @@ class GetComment:
                                 ,icon=self.ico_path('icon.ico')
                                 ,size=(800,600)
                                 ,location=(self.settings.lx, self.settings.ly)
+                                ,keep_on_top=self.settings.keep_on_top
         )
         self.window['table_comment'].expand(expand_x=True, expand_y=True)
     
@@ -346,7 +348,9 @@ class GetComment:
                 self.settings.req = []
                 self.window['list_req'].update(self.settings.req)
                 self.gen_xml()
-
+            elif ev == 'keep_on_top':
+                self.settings.keep_on_top = val[ev]
+                self.window.TKroot.wm_attributes("-topmost", val[ev])
 
 a = GetComment()
 a.main()
