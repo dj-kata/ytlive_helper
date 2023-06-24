@@ -117,6 +117,9 @@ ytlive_helper.exeを実行します。
 
 ## 告知ボタン使用時の各情報の自動セット(配信タイトル、今日のお題など)
 v1.0.2以降で、告知ボタン使用時に配信タイトル等の情報をOBSに反映する機能を追加しました。  
+告知ボタンを押すだけで、タイトルや概要欄から情報を抽出し、以下赤枠の部分を書き換えます。
+![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/e04ffa48-216e-49ad-9b07-da450f52c388)
+
 動作イメージは以下。  
 https://twitter.com/cold_planet_/status/1672506782323990528
 
