@@ -9,6 +9,7 @@ import json
 import webbrowser, urllib, requests
 from bs4 import BeautifulSoup
 import datetime, time
+from obssocket import OBSSocket
 
 import logging, logging.handlers
 import traceback
@@ -26,7 +27,12 @@ hdl.setFormatter(hdl_formatter)
 logger.addHandler(hdl)
 
 class Settings:
-    def __init__(self, lx=0, ly=0, manager=[], pushword=['お題 ', 'お題　', 'リク ', 'リク　'], pullword=['リクあり', '消化済'], ngword=[], req=[], url='', push_manager_only=False, pull_manager_only=False, keep_on_top=False):
+    def __init__(self, lx=0, ly=0, manager=[], pushword=['お題 ', 'お題　', 'リク ', 'リク　']
+                 ,pullword=['リクあり', '消化済'], ngword=[], req=[], url=''
+                 ,push_manager_only=False, pull_manager_only=False, keep_on_top=False
+                 ,obs_host='localhost', obs_passwd='', obs_port=4444, obs_source='INFINITAS'
+                 ,series_query='#[number]', content_header='◆今回の予定'
+                 ):
         self.lx       = lx
         self.ly       = ly
         self.manager  = manager
@@ -38,6 +44,12 @@ class Settings:
         self.push_manager_only = push_manager_only
         self.pull_manager_only = pull_manager_only
         self.keep_on_top = keep_on_top
+        self.obs_host = obs_host
+        self.obs_passwd = obs_passwd
+        self.obs_port = obs_port
+        self.obs_source = obs_source
+        self.series_query = series_query
+        self.content_header = content_header
 
     def save(self):
         with open('settings.json', 'w') as f:
@@ -48,6 +60,7 @@ class GetComment:
         self.livechat = False
         self.window = False
         self.autoscroll  = True
+        self.obs = False
         self.table_comment = []
         if os.path.exists('settings.json'):
             with open('settings.json', 'r') as f:
@@ -157,6 +170,19 @@ class GetComment:
     def gui_settings(self):
         self.mode = 'settings'
         layout = []
+        layout_obs = [
+            [sg.Text('OBS host: '), sg.Input(self.settings.obs_host, key='obs_host', size=(20,20))],
+            [sg.Text('OBS websocket port: '), sg.Input(self.settings.obs_port, key='obs_port', size=(10,20))],
+            [sg.Text('OBS websocket password'), sg.Input(self.settings.obs_passwd, key='obs_passwd', size=(20,20), password_char='*')],
+            [sg.Text('INFINITAS用ソース名: ', tooltip='OBSでINFINITASを表示するのに使っているゲームソースの名前を入力してください。'), sg.Input(self.settings.obs_source, key='obs_source', size=(20,20))],
+        ]
+        layout_info =[
+            [sg.Text('配信タイトル内の第XXX回部分のフォーマット(数字部分は[number]とする):'
+                     ,tooltip='#[number]の場合、"INFINITAS配信 #001"から"#001"の部分を抽出します。\n名前をythSeriesNumとしたテキストソースにセットされます。')
+                     ,sg.Input(self.settings.series_query, key='series_query', size=(15,1))],
+            [sg.Text('概要欄の配信内容部分:', tooltip='この文字列の直後の行を使用します。\n名前をythTodayContentとしたテキストソースにセットされます。')
+             , sg.Input(self.settings.content_header, key='content_header', size=(20,1))],
+        ]
         layout_push_description = [
             [sg.Text('リスト登録用word', tooltip='ここに書いた単語が先頭にあるメッセージをリクエストと扱う。\n例:"リクエスト"を登録している場合、"リクエスト セピアの軌跡"を拾ってセピアの軌跡をリストに登録する')],
             [sg.Button('登録', key='btn_add_push', enable_events=True),sg.Button('削除', key='btn_delete_push', enable_events=True)],
@@ -176,6 +202,8 @@ class GetComment:
                 sg.Column([[sg.Listbox(self.settings.pullword, size=(30,5), key='list_pull')]], vertical_scroll_only=True),
             ]
         ]
+        layout.append([sg.Frame('OBS設定', layout=layout_obs)])
+        layout.append([sg.Frame('告知用設定', layout=layout_info)])
         layout.append([sg.Frame('リスト登録用word登録', layout=layout_trigger)])
         layout.append([sg.Column([[sg.Text('管理者ID', tooltip='メイン画面で、コメントを選択して右クリック→管理者IDに追加で登録できます。'), sg.Listbox(self.settings.manager, size=(50,5), key='list_manager')]], vertical_scroll_only=True),sg.Button('削除', key='btn_delete_manager', enable_events=True)])
         layout.append([sg.Button('閉じる', enable_events=True, key='btn_close_setting')])
@@ -190,7 +218,7 @@ class GetComment:
                                 ,finalize=True
                                 ,enable_close_attempted_event=True
                                 ,icon=self.ico_path('icon.ico')
-                                ,size=(800,400)
+                                ,size=(800,500)
                                 ,location=(self.settings.lx, self.settings.ly)
         )
 
@@ -215,6 +243,11 @@ class GetComment:
             ,enable_events=True
             ,right_click_menu=right_click_menu
         )])
+        try:
+            self.obs = OBSSocket(self.settings.obs_host, self.settings.obs_port, self.settings.obs_passwd, self.settings.obs_source,'')
+        except:
+            logger.debug('OBS接続エラー')
+            self.obs = False
         if self.window != False:
             self.window.close()
         self.window = sg.Window('YoutubeLive Helper'
@@ -241,6 +274,14 @@ class GetComment:
                 if self.mode == 'settings':
                     self.settings.push_manager_only = val['push_manager_only']
                     self.settings.pull_manager_only = val['pull_manager_only']
+                    self.settings.obs_host = val['obs_host']
+                    self.settings.obs_passwd = val['obs_passwd']
+                    self.settings.series_query = val['series_query']
+                    self.settings.content_header = val['content_header']
+                    try:
+                        self.settings.obs_port = int(val['obs_port'])
+                    except Exception:
+                        sg.alert('正しいport番号を入力してください')
                     self.gui_main()
                 else:
                     self.stop_thread = True
@@ -285,7 +326,33 @@ class GetComment:
                     regular_url = f"https://www.youtube.com/watch?v={self.liveid}"
                     encoded_title = urllib.parse.quote(f"{title}\n{regular_url}\n")
                     webbrowser.open(f"https://twitter.com/intent/tweet?text={encoded_title}")
+
+                    target = False
+                    for t in soup.find_all(True):
+                        if self.settings.content_header in t.text:
+                            target = t
+                            break
+
+                    for i,l in enumerate(t.text.split('\\n')):
+                        if self.settings.content_header in l:
+                            break
+
+                    content = t.text.split('\\n')[i+1]
+
+                    # タイトル等のセット(yth***のtextソースを書き換える)
+                    query = self.settings.series_query.replace('[number]', '[0-9０-９]+')
+                    series = ''
+                    if re.search(query, title):
+                        series = re.search(query, title).group()
+                    basetitle = title.replace(series, '')
+                    basetitle = re.sub('【[^【】]*】', '', basetitle)
+                    basetitle = re.sub('\[[^\[\]]*]', '', basetitle)
+                    self.obs.change_text('ythSeriesNum', series)
+                    self.obs.change_text('ythMainTitle', basetitle)
+                    self.obs.change_text('ythTodayContent', content)
+                    logger.debug(f"series={series}, basetitle={basetitle}, content={content}")
                 except Exception:
+                    logger.debug(traceback.format_exc())
                     sg.popup('対応していないURLです。\nYoutubeLiveのURLを入力してください。')
             elif ev == 'MouseWheel:Up':
                 self.autoscroll = False
