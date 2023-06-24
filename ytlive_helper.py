@@ -30,7 +30,7 @@ class Settings:
     def __init__(self, lx=0, ly=0, manager=[], pushword=['お題 ', 'お題　', 'リク ', 'リク　']
                  ,pullword=['リクあり', '消化済'], ngword=[], req=[], url=''
                  ,push_manager_only=False, pull_manager_only=False, keep_on_top=False
-                 ,obs_host='localhost', obs_passwd='', obs_port=4444, obs_source='INFINITAS'
+                 ,obs_host='localhost', obs_passwd='', obs_port=4444
                  ,series_query='#[number]', content_header='◆今回の予定'
                  ):
         self.lx       = lx
@@ -47,7 +47,6 @@ class Settings:
         self.obs_host = obs_host
         self.obs_passwd = obs_passwd
         self.obs_port = obs_port
-        self.obs_source = obs_source
         self.series_query = series_query
         self.content_header = content_header
 
@@ -174,7 +173,6 @@ class GetComment:
             [sg.Text('OBS host: '), sg.Input(self.settings.obs_host, key='obs_host', size=(20,20))],
             [sg.Text('OBS websocket port: '), sg.Input(self.settings.obs_port, key='obs_port', size=(10,20))],
             [sg.Text('OBS websocket password'), sg.Input(self.settings.obs_passwd, key='obs_passwd', size=(20,20), password_char='*')],
-            [sg.Text('INFINITAS用ソース名: ', tooltip='OBSでINFINITASを表示するのに使っているゲームソースの名前を入力してください。'), sg.Input(self.settings.obs_source, key='obs_source', size=(20,20))],
         ]
         layout_info =[
             [sg.Text('配信タイトル内の第XXX回部分のフォーマット(数字部分は[number]とする):'
@@ -244,7 +242,7 @@ class GetComment:
             ,right_click_menu=right_click_menu
         )])
         try:
-            self.obs = OBSSocket(self.settings.obs_host, self.settings.obs_port, self.settings.obs_passwd, self.settings.obs_source,'')
+            self.obs = OBSSocket(self.settings.obs_host, self.settings.obs_port, self.settings.obs_passwd)
         except:
             logger.debug('OBS接続エラー')
             self.obs = False
@@ -323,6 +321,7 @@ class GetComment:
                     r = requests.get(regular_url)
                     soup = BeautifulSoup(r.text,features="html.parser")
                     title = re.sub(' - YouTube\Z', '', soup.find('title').text)
+                    content = ''
                     regular_url = f"https://www.youtube.com/watch?v={self.liveid}"
                     encoded_title = urllib.parse.quote(f"{title}\n{regular_url}\n")
                     webbrowser.open(f"https://twitter.com/intent/tweet?text={encoded_title}")
@@ -335,9 +334,9 @@ class GetComment:
 
                     for i,l in enumerate(t.text.split('\\n')):
                         if self.settings.content_header in l:
-                            break
+                            if len(t.text.split('\\n')) >= i+2:
+                                content = t.text.split('\\n')[i+1]
 
-                    content = t.text.split('\\n')[i+1]
 
                     # タイトル等のセット(yth***のtextソースを書き換える)
                     query = self.settings.series_query.replace('[number]', '[0-9０-９]+')
@@ -347,9 +346,10 @@ class GetComment:
                     basetitle = title.replace(series, '')
                     basetitle = re.sub('【[^【】]*】', '', basetitle)
                     basetitle = re.sub('\[[^\[\]]*]', '', basetitle)
-                    self.obs.change_text('ythSeriesNum', series)
-                    self.obs.change_text('ythMainTitle', basetitle)
-                    self.obs.change_text('ythTodayContent', content)
+                    if self.obs != False:
+                        self.obs.change_text('ythSeriesNum', series)
+                        self.obs.change_text('ythMainTitle', basetitle)
+                        self.obs.change_text('ythTodayContent', content)
                     logger.debug(f"series={series}, basetitle={basetitle}, content={content}")
                 except Exception:
                     logger.debug(traceback.format_exc())
