@@ -241,11 +241,6 @@ class GetComment:
             ,enable_events=True
             ,right_click_menu=right_click_menu
         )])
-        try:
-            self.obs = OBSSocket(self.settings.obs_host, self.settings.obs_port, self.settings.obs_passwd)
-        except:
-            logger.debug('OBS接続エラー')
-            self.obs = False
         if self.window != False:
             self.window.close()
         self.window = sg.Window('YoutubeLive Helper'
@@ -263,6 +258,11 @@ class GetComment:
         self.window['table_comment'].expand(expand_x=True, expand_y=True)
     
     def main(self):
+        try:
+            self.obs = OBSSocket(self.settings.obs_host, self.settings.obs_port, self.settings.obs_passwd)
+        except:
+            logger.debug('OBS接続エラー')
+            self.obs = False
         self.gui_main()
         th = False
         while True:
