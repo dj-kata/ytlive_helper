@@ -98,7 +98,6 @@ class GetComment:
         title = re.sub(' - YouTube\Z', '', soup.find('title').text)
         self.window['live_title'].update(title)
 
-        self.window['table_comment'].update(self.table_comment)
         print('main thread start')
         logger.debug('main thread start')
         try:
@@ -226,7 +225,7 @@ class GetComment:
     def gui_main(self):
         self.mode = 'main'
         sg.theme('SystemDefault')
-        menuitems = [['ファイル',['設定','配信を告知する','終了']]]
+        menuitems = [['ファイル',['設定', '配信を告知する', 'コメント一覧をクリア', '終了']]]
         right_click_menu = ['&Right', ['管理者IDに追加']]
         layout = []
         layout.append([sg.Menubar(menuitems, key='menu')])
@@ -321,7 +320,8 @@ class GetComment:
                         self.window['is_active'].update('')
                         self.window['live_title'].update('')
                         self.window['btn_start'].update('start')
-                        self.stop_thread = True
+                        #self.stop_thread = True
+                        logger.debug(f'配信終了を検出。th={th}')
                     else: # 配信中に落ちた場合は再接続
                         th = threading.Thread(target=self.get_comment, daemon=True)
                         th.start()
@@ -386,6 +386,9 @@ class GetComment:
                 self.settings.url = val['input_url']
                 self.settings.lx,self.settings.ly = self.window.current_location()
                 self.gui_settings()
+            elif ev == 'コメント一覧をクリア':
+                self.table_comment = []
+                self.window['table_comment'].update(self.table_comment)
             elif ev == '管理者IDに追加':
                 if len(val['table_comment']) > 0:
                     tmp = self.table_comment[val['table_comment'][0]]
