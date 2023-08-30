@@ -10,6 +10,7 @@ import webbrowser, urllib, requests
 from bs4 import BeautifulSoup
 import datetime, time
 from obssocket import OBSSocket
+from collections import deque
 
 import logging, logging.handlers
 import traceback
@@ -61,6 +62,7 @@ class GetComment:
         self.autoscroll  = True
         self.obs = False
         self.table_comment = []
+        self.ts_exit = deque([], 10)
         if os.path.exists('settings.json'):
             with open('settings.json', 'r') as f:
                 tmp = json.load(f)
@@ -96,7 +98,6 @@ class GetComment:
         title = re.sub(' - YouTube\Z', '', soup.find('title').text)
         self.window['live_title'].update(title)
 
-        self.table_comment = []
         self.window['table_comment'].update(self.table_comment)
         print('main thread start')
         logger.debug('main thread start')
@@ -110,7 +111,8 @@ class GetComment:
             chatdata = self.livechat.get()
             for c in chatdata.items:
                 logger.debug(f"{c.author.name}({c.author.channelId}):{c.message}")
-                self.table_comment.append([c.author.name, c.message, c.datetime, c.author.channelId])
+                if [c.author.name, c.message, c.datetime, c.author.channelId] not in self.table_comment:
+                    self.table_comment.append([c.author.name, c.message, c.datetime, c.author.channelId])
                 # TKinterの機能を使ってコメント用リストを差分更新
                 self.window['table_comment'].Widget.insert('', 'end', iid=len(self.table_comment),values=[c.author.name, c.message, c.datetime, c.author.channelId])
                 if self.autoscroll:
@@ -157,6 +159,7 @@ class GetComment:
         print('### main thread end!!!')
         logger.debug('### main thread end!!!')
         self.window.write_event_value('-ENDTHREAD-', ' ')
+        self.ts_exit.append(int(datetime.datetime.now().timestamp())) # unix時間の整数部分のみを格納
 
     def gen_xml(self):
         with open('todo.xml', 'w', encoding='utf-8') as f:
@@ -257,12 +260,15 @@ class GetComment:
         )
         self.window['table_comment'].expand(expand_x=True, expand_y=True)
     
-    def main(self):
+    def build_obs(self):
         try:
             self.obs = OBSSocket(self.settings.obs_host, self.settings.obs_port, self.settings.obs_passwd)
         except:
             logger.debug('OBS接続エラー')
             self.obs = False
+    
+    def main(self):
+        self.build_obs()
         self.gui_main()
         th = False
         while True:
@@ -303,17 +309,24 @@ class GetComment:
                     del th
                     del self.livechat
                     th = False
-                time.sleep(10)
+                #time.sleep(10)
 
                 if self.stop_thread: # 終了処理
                     self.window['is_active'].update('')
                     self.window['live_title'].update('')
                     self.window['btn_start'].update('start')
                 else: # 強制終了の場合
-                    th = threading.Thread(target=self.get_comment, daemon=True)
-                    th.start()
-                    self.window['btn_start'].update('stop')
-                    self.window['is_active'].update('●active')
+                    now = int(datetime.datetime.now().timestamp())
+                    if (len(self.ts_exit) == 10) and (now - self.ts_exit[0] < 100): # 配信後であるかどうかの検出
+                        self.window['is_active'].update('')
+                        self.window['live_title'].update('')
+                        self.window['btn_start'].update('start')
+                        self.stop_thread = True
+                    else: # 配信中に落ちた場合は再接続
+                        th = threading.Thread(target=self.get_comment, daemon=True)
+                        th.start()
+                        self.window['btn_start'].update('stop')
+                        self.window['is_active'].update('●active')
             elif ev in ('btn_tweet', '配信を告知する'): # 告知する
                 try:
                     self.get_liveid(self.window['input_url'].get())
@@ -346,10 +359,13 @@ class GetComment:
                     basetitle = title.replace(series, '')
                     basetitle = re.sub('【[^【】]*】', '', basetitle)
                     basetitle = re.sub('\[[^\[\]]*]', '', basetitle)
+                    self.build_obs()
                     if self.obs != False:
                         self.obs.change_text('ythSeriesNum', series)
                         self.obs.change_text('ythMainTitle', basetitle)
                         self.obs.change_text('ythTodayContent', content)
+                    else:
+                        sg.popup_error('Error! OBSとの通信に失敗しました')
                     logger.debug(f"series={series}, basetitle={basetitle}, content={content}")
                 except Exception:
                     logger.debug(traceback.format_exc())
