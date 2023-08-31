@@ -15,6 +15,7 @@ from collections import deque
 import logging, logging.handlers
 import traceback
 
+TIMEOUT_SEC = 300
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 hdl = logging.handlers.RotatingFileHandler(
@@ -112,8 +113,7 @@ class GetComment:
                 logger.debug(f"{c.author.name}({c.author.channelId}):{c.message}")
                 if [c.author.name, c.message, c.datetime, c.author.channelId] not in self.table_comment:
                     self.table_comment.append([c.author.name, c.message, c.datetime, c.author.channelId])
-                # TKinterの機能を使ってコメント用リストを差分更新
-                self.window['table_comment'].Widget.insert('', 'end', iid=len(self.table_comment),values=[c.author.name, c.message, c.datetime, c.author.channelId])
+                    self.window['table_comment'].Widget.insert('', 'end', iid=len(self.table_comment),values=[c.author.name, c.message, c.datetime, c.author.channelId])
                 if self.autoscroll:
                     self.window['table_comment'].set_vscroll_position(len(self.table_comment)-1)
                 # リクエスト追加処理
@@ -316,7 +316,7 @@ class GetComment:
                     self.window['btn_start'].update('start')
                 else: # 強制終了の場合
                     now = int(datetime.datetime.now().timestamp())
-                    if (len(self.ts_exit) == 10) and (now - self.ts_exit[0] < 100): # 配信後であるかどうかの検出
+                    if (len(self.ts_exit) == 10) and (now - self.ts_exit[0] < TIMEOUT_SEC): # 配信後であるかどうかの検出
                         self.window['is_active'].update('')
                         self.window['live_title'].update('')
                         self.window['btn_start'].update('start')
