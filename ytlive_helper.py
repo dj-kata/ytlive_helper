@@ -106,7 +106,9 @@ class GetComment:
             logger.debug(f'self.manager_id = {self.manager_id}, self.liveid = {self.liveid}')
         except Exception:
             logger.debug(traceback.format_exc())
-            time.sleep(1)
+            logger.debug('### main thread end!!!')
+            self.window.write_event_value('-ENDTHREAD-', ' ')
+            return False
         while self.livechat.is_alive():
             chatdata = self.livechat.get()
             for c in chatdata.items:
@@ -159,6 +161,7 @@ class GetComment:
         logger.debug('### main thread end!!!')
         self.window.write_event_value('-ENDTHREAD-', ' ')
         self.ts_exit.append(int(datetime.datetime.now().timestamp())) # unix時間の整数部分のみを格納
+        return True
 
     def gen_xml(self):
         with open('todo.xml', 'w', encoding='utf-8') as f:
