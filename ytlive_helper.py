@@ -59,7 +59,6 @@ class Settings:
 
 class GetComment:
     def __init__(self):
-        self.livechat = False
         self.window = False
         self.autoscroll  = True
         self.obs = False
@@ -103,15 +102,18 @@ class GetComment:
         print('main thread start')
         logger.debug('main thread start')
         try:
-            self.livechat = pytchat.create(video_id = self.liveid, interruptable=False)
+            livechat = pytchat.create(video_id = self.liveid, interruptable=False)
             logger.debug(f'self.manager_id = {self.manager_id}, self.liveid = {self.liveid}')
         except Exception:
             logger.debug(traceback.format_exc())
+            time.sleep(10) # createで落ちた場合は少し待つ
             logger.debug('### main thread end!!!')
             self.window.write_event_value('-ENDTHREAD-', ' ')
+            self.window['is_active'].update('ERROR!!')
             return False
-        while self.livechat.is_alive():
-            chatdata = self.livechat.get()
+        while livechat.is_alive():
+            self.window['is_active'].update('●active')
+            chatdata = livechat.get()
             for c in chatdata.items:
                 logger.debug(f"{c.author.name}({c.author.channelId}):{c.message}")
                 if [c.author.name, c.message, c.datetime, c.author.channelId] not in self.table_comment:
@@ -162,6 +164,7 @@ class GetComment:
         logger.debug('### main thread end!!!')
         self.window.write_event_value('-ENDTHREAD-', ' ')
         self.ts_exit.append(int(datetime.datetime.now().timestamp())) # unix時間の整数部分のみを格納
+        livechat.terminate()
         return True
 
     def gen_xml(self):
@@ -302,7 +305,6 @@ class GetComment:
                     th = threading.Thread(target=self.get_comment, daemon=True)
                     th.start()
                     self.window[ev].update('stop')
-                    self.window['is_active'].update('●active')
                 else:
                     self.stop_thread = True
             elif ev == '-ENDTHREAD-':
@@ -329,7 +331,6 @@ class GetComment:
                         th = threading.Thread(target=self.get_comment, daemon=True)
                         th.start()
                         self.window['btn_start'].update('stop')
-                        self.window['is_active'].update('●active')
             elif ev in ('btn_tweet', '配信を告知する'): # 告知する
                 try:
                     self.get_liveid(self.window['input_url'].get())
