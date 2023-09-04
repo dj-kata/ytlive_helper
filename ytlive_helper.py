@@ -21,7 +21,8 @@ logger.setLevel(logging.DEBUG)
 hdl = logging.handlers.RotatingFileHandler(
     './dbg.log',
     encoding='utf-8',
-    maxBytes=1024*1024*20,
+    maxBytes=1024*1024*2,
+    backupCount=1,
 )
 hdl.setLevel(logging.DEBUG)
 hdl_formatter = logging.Formatter('%(asctime)s %(filename)s:%(lineno)5d %(funcName)s() [%(levelname)s] %(message)s')
@@ -241,7 +242,7 @@ class GetComment:
             ,key='table_comment'
             ,headings=['user', 'msg', 'date', 'id']
             ,auto_size_columns=False
-            ,col_widths=[15, 60, 10, 20]
+            ,col_widths=[15, 60, 15, 25]
             ,justification='left'
             ,enable_events=True
             ,right_click_menu=right_click_menu
@@ -309,7 +310,6 @@ class GetComment:
                 if th != False:
                     th.join()
                     del th
-                    del self.livechat
                     th = False
                 #time.sleep(10)
 
