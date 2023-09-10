@@ -66,6 +66,7 @@ class Settings:
 class GetComment:
     def __init__(self):
         self.window = False
+        self.liveid = False
         self.autoscroll  = True
         self.obs = False
         self.table_comment = []
@@ -97,7 +98,15 @@ class GetComment:
         self.manager_id = [self.settings.manager[i][-25:-1] for i in range(len(self.settings.manager))]
         logger.debug(f'self.manager_id = {self.manager_id}')
         self.stop_thread = False
+        liveid_old = self.liveid
         self.get_liveid(self.window['input_url'].get())
+        if self.liveid != liveid_old:
+            self.table_comment = []
+            self.window['table_comment'].update(self.table_comment)
+            self.settings.names = []
+            self.settings.msgs = []
+            self.settings.msg_orgs = []
+            self.settings.icon_urls = []
 
         regular_url = f"https://www.youtube.com/watch?v={self.liveid}"
         r = requests.get(regular_url)
