@@ -42,8 +42,9 @@ class OBSSocket():
         
     def refresh_source(self, sourcename):
         try:
-            self.obs.ws.press_input_properties_button(sourcename, 'refreshnocache')
+            self.ws.press_input_properties_button(sourcename, 'refreshnocache')
         except Exception:
+            print('error')
             pass
 
     def on_exit_started(self, _):
