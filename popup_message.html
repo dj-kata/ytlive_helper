@@ -32,15 +32,17 @@
                 overflow:hidden;
                 position: fixed;
                 background: rgba(0,0,0,0.95);
-                border: 4px #3c00ff solid;
+                border: 4px #704be9 solid;
                 padding-left: 2%;
                 padding-right: 2%;
                 padding-top: 0.5%;
                 padding-bottom: 0.5%;
+                margin:0px;
                 opacity:0;
             }
             .name{
                 float: left;
+                color: #ff9999;
             }
             .msg{
                 clear: left;
@@ -104,7 +106,7 @@
                         var span = document.createElement("div");
                         span.style.left = x+'%';
                         span.style.top  = y+'%';
-                        span.innerHTML = "<p class='name'><img width='40px' src='"+icon+"'>&nbsp"+name+":</p><br>";
+                        span.innerHTML = "<p class='name'><img width='40px' src='"+icon+"'>&nbsp"+name+"</p><br>";
                         span.innerHTML += "<p class='msg'>"+message+"</p>";
                         //span.innerHTML = name+"<br>"+message;
                         //span.className = "msg"+cnt;
