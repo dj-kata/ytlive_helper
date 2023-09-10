@@ -32,7 +32,6 @@ logger.addHandler(hdl)
 class Settings:
     def __init__(self, lx=0, ly=0, manager=[], pushword=['お題 ', 'お題　', 'リク ', 'リク　']
                  ,pullword=['リクあり', '消化済'], ngword=[], req=[]
-                 , msgs=[], names=[], icon_urls=[], msg_orgs=[]
                  ,url=''
                  ,push_manager_only=False, pull_manager_only=False, keep_on_top=False
                  ,obs_host='localhost', obs_passwd='', obs_port=4444
@@ -45,10 +44,6 @@ class Settings:
         self.pullword           = pullword
         self.ngword             = ngword
         self.req                = req # 旧形式 "お題(～～さん)"
-        self.msgs               = msgs
-        self.msg_orgs           = msg_orgs
-        self.names              = names
-        self.icon_urls          = icon_urls
         self.url                = url
         self.push_manager_only  = push_manager_only
         self.pull_manager_only  = pull_manager_only
@@ -67,6 +62,10 @@ class GetComment:
     def __init__(self):
         self.window = False
         self.liveid = False
+        self.msgs               = []
+        self.msg_orgs           = []
+        self.names              = []
+        self.icon_urls          = []
         self.autoscroll  = True
         self.obs = False
         self.table_comment = []
@@ -103,10 +102,10 @@ class GetComment:
         if self.liveid != liveid_old:
             self.table_comment = []
             self.window['table_comment'].update(self.table_comment)
-            self.settings.names = []
-            self.settings.msgs = []
-            self.settings.msg_orgs = []
-            self.settings.icon_urls = []
+            self.names = []
+            self.msgs = []
+            self.msg_orgs = []
+            self.icon_urls = []
         self.gen_xml()
         self.build_obs()
         if self.obs != False:
@@ -144,10 +143,10 @@ class GetComment:
                 # リクエスト追加処理
                 if (not self.settings.push_manager_only) or (self.settings.push_manager_only and (c.author.channelId in self.manager_id)): # 許可されたIDからしか受け付けない
                     self.last_c = c
-                    self.settings.msgs.append(c.message)
-                    self.settings.msg_orgs.append(c.messageEx)
-                    self.settings.names.append(c.author.name)
-                    self.settings.icon_urls.append(c.author.imageUrl)
+                    self.msgs.append(c.message)
+                    self.msg_orgs.append(c.messageEx)
+                    self.names.append(c.author.name)
+                    self.icon_urls.append(c.author.imageUrl)
                     if c.message.startswith(tuple(self.settings.pushword)):
                         req = self.convert_msg_org(c.messageEx)
                         for q in self.settings.pushword: # 全pushwordを先頭から取り除く
@@ -202,7 +201,7 @@ class GetComment:
             f.write("<TODOs>\n")
             for item in self.settings.req:
                 f.write(f"<item>{item}</item>\n")
-            for name,msg,icon,msg_org in zip(self.settings.names, self.settings.msgs, self.settings.icon_urls,self.settings.msg_orgs):
+            for name,msg,icon,msg_org in zip(self.names, self.msgs, self.icon_urls,self.msg_orgs):
                 msg_org_mod = self.convert_msg_org(msg_org)
                 #tmp = f"<item><icon>{icon}</icon><name>{self.escape_for_xml(name)}</name><msg>{self.escape_for_xml(msg)}</msg></item>\n"
                 tmp = f"<chat>\n"
@@ -440,10 +439,10 @@ class GetComment:
             elif ev == 'コメント一覧をクリア':
                 self.table_comment = []
                 self.window['table_comment'].update(self.table_comment)
-                self.settings.names = []
-                self.settings.msgs = []
-                self.settings.msg_orgs = []
-                self.settings.icon_urls = []
+                self.names = []
+                self.msgs = []
+                self.msg_orgs = []
+                self.icon_urls = []
             elif ev == '管理者IDに追加':
                 if len(val['table_comment']) > 0:
                     tmp = self.table_comment[val['table_comment'][0]]
