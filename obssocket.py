@@ -39,6 +39,12 @@ class OBSSocket():
             res = self.ws.set_scene_item_enabled(scenename, sourceid, enabled=False)
         except Exception as e:
             return e
+        
+    def refresh_source(self, sourcename):
+        try:
+            self.obs.ws.press_input_properties_button(sourcename, 'refreshnocache')
+        except Exception:
+            pass
 
     def on_exit_started(self, _):
         print("OBS closing!")

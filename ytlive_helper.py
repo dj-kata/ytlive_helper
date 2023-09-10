@@ -110,7 +110,8 @@ class GetComment:
             self.gen_xml()
             self.build_obs()
             if self.obs != False:
-                self.obs.ws.press_input_properties_button('popup_message.html', 'refreshnocache')
+                self.obs.refresh_source('popup_message.html')
+                self.obs.refresh_source('popup_message')
 
         regular_url = f"https://www.youtube.com/watch?v={self.liveid}"
         r = requests.get(regular_url)
