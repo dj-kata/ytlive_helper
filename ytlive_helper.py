@@ -107,6 +107,10 @@ class GetComment:
             self.settings.msgs = []
             self.settings.msg_orgs = []
             self.settings.icon_urls = []
+            self.gen_xml()
+            self.build_obs()
+            if self.obs != False:
+                self.obs.ws.press_input_properties_button('popup_message.html', 'refreshnocache')
 
         regular_url = f"https://www.youtube.com/watch?v={self.liveid}"
         r = requests.get(regular_url)
