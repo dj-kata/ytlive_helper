@@ -31,21 +31,27 @@ logger.addHandler(hdl)
 
 class Settings:
     def __init__(self, lx=0, ly=0, manager=[], pushword=['お題 ', 'お題　', 'リク ', 'リク　']
-                 ,pullword=['リクあり', '消化済'], ngword=[], req=[], url=''
+                 ,pullword=['リクあり', '消化済'], ngword=[], req=[]
+                 , msgs=[], names=[], icon_urls=[], msg_orgs=[]
+                 ,url=''
                  ,push_manager_only=False, pull_manager_only=False, keep_on_top=False
                  ,obs_host='localhost', obs_passwd='', obs_port=4444
                  ,series_query='#[number]', content_header='◆今回の予定'
                  ):
-        self.lx       = lx
-        self.ly       = ly
-        self.manager  = manager
-        self.pushword = pushword
-        self.pullword = pullword
-        self.ngword   = ngword
-        self.req      = req
-        self.url      = url
-        self.push_manager_only = push_manager_only
-        self.pull_manager_only = pull_manager_only
+        self.lx                 = lx
+        self.ly                 = ly
+        self.manager            = manager
+        self.pushword           = pushword
+        self.pullword           = pullword
+        self.ngword             = ngword
+        self.req                = req # 旧形式 "お題(～～さん)"
+        self.msgs               = msgs
+        self.msg_orgs           = msg_orgs
+        self.names              = names
+        self.icon_urls          = icon_urls
+        self.url                = url
+        self.push_manager_only  = push_manager_only
+        self.pull_manager_only  = pull_manager_only
         self.keep_on_top = keep_on_top
         self.obs_host = obs_host
         self.obs_passwd = obs_passwd
@@ -123,12 +129,18 @@ class GetComment:
                     self.window['table_comment'].set_vscroll_position(len(self.table_comment)-1)
                 # リクエスト追加処理
                 if (not self.settings.push_manager_only) or (self.settings.push_manager_only and (c.author.channelId in self.manager_id)): # 許可されたIDからしか受け付けない
+                    self.last_c = c
+                    self.settings.msgs.append(c.message)
+                    self.settings.msg_orgs.append(c.messageEx)
+                    self.settings.names.append(c.author.name)
+                    self.settings.icon_urls.append(c.author.imageUrl)
                     if c.message.startswith(tuple(self.settings.pushword)):
-                        req = c.message
+                        req = self.convert_msg_org(c.messageEx)
                         for q in self.settings.pushword: # 全pushwordを先頭から取り除く
                             req = re.sub(f'\A{q}', '', req).strip()
-                        req = re.sub('<[^>]*?>', '', req)
-                        req = req.replace('&', '&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;').replace("'",'&apos;')
+                        #req = re.sub('<[^>]*?>', '', req) # HTMLタグ削除
+                        # escape
+                        #req = req.replace('&', '&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;').replace("'",'&apos;')
                         self.settings.req.append(f"{req} ({c.author.name}さん)")
                         self.window['list_req'].update(self.settings.req)
                 # リクエスト削除処理
@@ -167,13 +179,34 @@ class GetComment:
         livechat.terminate()
         return True
 
+    def escape_for_xml(self, input):
+        return input.replace('&', '&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;').replace("'",'&apos;')
+
     def gen_xml(self):
         with open('todo.xml', 'w', encoding='utf-8') as f:
             f.write(f'<?xml version="1.0" encoding="utf-8"?>\n')
             f.write("<TODOs>\n")
             for item in self.settings.req:
                 f.write(f"<item>{item}</item>\n")
+            for name,msg,icon,msg_org in zip(self.settings.names, self.settings.msgs, self.settings.icon_urls,self.settings.msg_orgs):
+                msg_org_mod = self.convert_msg_org(msg_org)
+                #tmp = f"<item><icon>{icon}</icon><name>{self.escape_for_xml(name)}</name><msg>{self.escape_for_xml(msg)}</msg></item>\n"
+                tmp = f"<chat>\n"
+                tmp += f"    <icon>{icon}</icon>\n"
+                tmp += f"    <name>{self.escape_for_xml(name)}</name>\n"
+                tmp += f"    <msg>{msg_org_mod}</msg>\n"
+                tmp += "</chat>\n"
+                f.write(tmp)
             f.write("</TODOs>\n")
+
+    def convert_msg_org(self, msg_org):
+        ret = ''
+        for m in msg_org:
+            if type(m) is str:
+                ret += self.escape_for_xml(m)
+            elif type(m) is dict:
+                ret += f"<img src='{m['url']}' width='32px'></img>"
+        return ret
 
     def gui_settings(self):
         self.mode = 'settings'
@@ -393,6 +426,10 @@ class GetComment:
             elif ev == 'コメント一覧をクリア':
                 self.table_comment = []
                 self.window['table_comment'].update(self.table_comment)
+                self.settings.names = []
+                self.settings.msgs = []
+                self.settings.msg_orgs = []
+                self.settings.icon_urls = []
             elif ev == '管理者IDに追加':
                 if len(val['table_comment']) > 0:
                     tmp = self.table_comment[val['table_comment'][0]]

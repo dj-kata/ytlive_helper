@@ -52,7 +52,7 @@
                 var out = "";
                 $('#todo tbody').html("");
                 $(xml).find("TODOs item").each(function(index, item){
-                    todo=$(item).text()
+                    todo=$(item).html()
                     var idx_mod = index+1;
 
                     out +='<tr><td><font color="#aaffaa">'+idx_mod+'</font></td><td><font color="#ffffff">'+todo+'</font></td></tr>';

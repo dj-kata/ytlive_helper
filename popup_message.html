@@ -1,0 +1,164 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <link href="https://fonts.googleapis.com/earlyaccess/nicomoji.css" rel="stylesheet">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Potta+One&display=swap" rel="stylesheet">
+        <title>hoge</title>
+        <style>
+            body { 
+                background-color: rgba(0, 0, 0, 0.0);
+                margin: 0px;
+                padding: 0px;
+                overflow: hidden;
+                color:#0020AA;   
+                font-size: 24px;
+                color: hsl(0, 0%, 93%);
+                font-family:"Meiryo";
+                overflow: hidden;
+            }
+            img{
+                    position:  relative;        /* 要素の配置方法を指定 */
+                    background-color: #ccc;     /* 背景色指定 */
+                    margin:0px;
+                    padding:0px;
+            }
+            .item{
+                overflow: hidden;
+                animation-name: inout;
+                animation-timing-function: linear;
+                animation-duration: 5s;
+                position: fixed; /* 画面上の指定座標に配置するため */
+                font-size: 32px; /* 文字サイズ */
+                /* 文字を指定座標位置の中央に表示させるための設定 */
+                display: flex;
+                align-items: center;
+                padding-left: 5%;
+                padding-right: 5%;
+                padding-top: 1.5%;
+                padding-bottom: 1.5%;
+                min-width: 200px;
+                height: 100px;
+                background: rgba(0,0,0,0.95);
+                border: 4px #7e66cd solid;
+                
+                opacity:0;
+            }
+            .item1{
+                animation-name: inout;
+                animation-timing-function: linear;
+                animation-duration: 5s;
+                overflow:hidden;
+                position: fixed;
+                background: rgba(0,0,0,0.95);
+                border: 4px #7e66cd solid;
+                padding-left: 2%;
+                padding-right: 2%;
+                padding-top: 0.5%;
+                padding-bottom: 0.5%;
+                opacity:0;
+            }
+            .name{
+                float: left;
+            }
+            .msg{
+                clear: left;
+            }
+            @keyframes inout{
+                0%{
+                    opacity:0;
+                    background-color: rgba(55,155,0,0.95);
+                }
+                3%{opacity:1}
+                10%{
+                    opacity:1;
+                    background-color: rgba(0,0,0,0.95);
+                    color: #fff;
+                    text-shadow: 2px 2px 0 #000,
+                                 -2px 2px 0 #000,
+                                 2px -2px 0 #000,
+                                 -2px -2px 0 #000;
+                }
+                97%{opacity:1}
+                100%{
+                    opacity:0;
+                    background:rgba(0,0,0,0);
+                }
+            }
+
+        </style>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+        <script>
+        var cnt = 0;
+        function loadXml() {
+            var getxml = $.ajax({
+                url: './todo.xml',
+                type: 'GET',
+                dataType: 'xml',
+                cache: false
+            });
+            var num_items = 0;
+            var out = ""
+            var box = $('#box')
+            var x = Math.random()*50;
+            var y = Math.random()*50;
+            getxml.done(function(xml){
+                // xmlデータからほしいデータをfindで探し処理
+                $('#todo tbody').html("");
+                $(xml).find("TODOs chat").each(function(index, item){
+                    // https://detail.chiebukuro.yahoo.co.jp/qa/question_detail/q12183688332
+                    if (cnt<=index){
+                        var name = $(item).find('name').text();
+                        //var message = $(item).filter('msg').innerHTML();
+                        var message = $(item).find('msg').html();
+                        var icon = $(item).find('icon').text();
+
+                        x = Math.floor((Math.random()*70));
+                        y = Math.floor((Math.random()*75));
+                        if (x<0){
+                            x=0;
+                        }
+                        if (y<0){
+                            y=0;
+                        }
+                        var span = document.createElement("div");
+                        span.style.left = x+'%';
+                        span.style.top  = y+'%';
+                        span.innerHTML = "<p class='name'><img width='40px' src='"+icon+"'>&nbsp"+name+":</p><br>";
+                        span.innerHTML += "<p class='msg'>"+message+"</p>";
+                        //span.innerHTML = name+"<br>"+message;
+                        //span.className = "msg"+cnt;
+                        span.className = "item1";
+                        document.body.appendChild(span);
+                        cnt += 1;
+                    }
+                }
+            );
+            if (num_items == 0){
+                out +='<tr><td></td><td>&nbsp;</td></tr>';
+                num_items = 1;
+                //out +='<tr><td></td><td><b>お題 曲名</b> でリクエスト可能</td></tr>';
+                //num_items = 2;
+            }
+            for (let i=1; i<=4-num_items; i++){ // 2つ分のスペースを必ず取るように埋めておく
+                out +='<tr><td></td><td>&nbsp;</td></tr>';
+            }
+            $('#todo tbody').html(out);
+            getxml.fail(function(err) {
+                $(songtitle).text("ERROR!!!"+err);
+                alert('failed');
+            });
+        });
+        }
+
+        window.addEventListener('DOMContentLoaded', function() {
+            var roopTimer = setInterval(loadXml, 1000);
+        });
+
+</script>
+</head>
+<body>
+</body>
+</html>
