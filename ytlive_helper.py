@@ -138,15 +138,14 @@ class GetComment:
                 if [c.author.name, c.message, c.datetime, c.author.channelId] not in self.table_comment:
                     self.table_comment.append([c.author.name, c.message, c.datetime, c.author.channelId])
                     self.window['table_comment'].Widget.insert('', 'end', iid=len(self.table_comment),values=[c.author.name, c.message, c.datetime, c.author.channelId])
-                if self.autoscroll:
-                    self.window['table_comment'].set_vscroll_position(len(self.table_comment)-1)
-                # リクエスト追加処理
-                if (not self.settings.push_manager_only) or (self.settings.push_manager_only and (c.author.channelId in self.manager_id)): # 許可されたIDからしか受け付けない
-                    self.last_c = c
                     self.msgs.append(c.message)
                     self.msg_orgs.append(c.messageEx)
                     self.names.append(c.author.name)
                     self.icon_urls.append(c.author.imageUrl)
+                if self.autoscroll:
+                    self.window['table_comment'].set_vscroll_position(len(self.table_comment)-1)
+                # リクエスト追加処理
+                if (not self.settings.push_manager_only) or (self.settings.push_manager_only and (c.author.channelId in self.manager_id)): # 許可されたIDからしか受け付けない
                     if c.message.startswith(tuple(self.settings.pushword)):
                         req = self.convert_msg_org(c.messageEx)
                         for q in self.settings.pushword: # 全pushwordを先頭から取り除く
@@ -162,8 +161,9 @@ class GetComment:
                         if q in c.message: # 削除用ワードを含む(先頭一致ではない)
                             submsg = re.findall('\S+', c.message.strip())
                             if len(submsg) == 1: # 削除用ワードのみのコメント
-                                self.settings.req.pop(0)
-                                self.window['list_req'].update(self.settings.req)
+                                if len(self.settings.req) > 0:
+                                    self.settings.req.pop(0)
+                                    self.window['list_req'].update(self.settings.req)
                             else: # 削除ワード subcmdの場合(ややこしいので1つしか受け付けない)
                                 try:
                                     excmd = submsg[1] # 追加コマンド, 削除 1-3なら1-3の部分
@@ -174,7 +174,8 @@ class GetComment:
                                                 self.settings.req.pop(st-1)
                                     else:
                                         st = int(excmd) - 1
-                                        self.settings.req.pop(st)
+                                        if len(self.settings.req) > st:
+                                            self.settings.req.pop(st)
                                     self.window['list_req'].update(self.settings.req)
                                 except Exception:
                                     logger.debug(traceback.format_exc())
@@ -218,7 +219,7 @@ class GetComment:
             if type(m) is str:
                 ret += self.escape_for_xml(m)
             elif type(m) is dict:
-                ret += f"<img src='{m['url']}' width='32px'></img>"
+                ret += f"<img id='emoji' src='{m['url']}' width='24px'></img>"
         return ret
 
     def gui_settings(self):
