@@ -95,7 +95,7 @@ class GetComment:
         # managerリストからID部分だけを抽出
         # リストにはDJかた(UC～～～～)みたいな形式で入っている
         self.manager_id = [self.settings.manager[i][-25:-1] for i in range(len(self.settings.manager))]
-        logger.debug(f'self.manager_id = {self.manager_id}')
+        logger.debug(f'self.manager_id = {self.manager_id}, liveid = {self.liveid}')
         self.stop_thread = False
         liveid_old = self.liveid
         self.get_liveid(self.window['input_url'].get())
