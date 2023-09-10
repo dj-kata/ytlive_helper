@@ -26,34 +26,13 @@
                     padding:0px;
             }
             .item{
-                overflow: hidden;
-                animation-name: inout;
-                animation-timing-function: linear;
-                animation-duration: 5s;
-                position: fixed; /* 画面上の指定座標に配置するため */
-                font-size: 32px; /* 文字サイズ */
-                /* 文字を指定座標位置の中央に表示させるための設定 */
-                display: flex;
-                align-items: center;
-                padding-left: 5%;
-                padding-right: 5%;
-                padding-top: 1.5%;
-                padding-bottom: 1.5%;
-                min-width: 200px;
-                height: 100px;
-                background: rgba(0,0,0,0.95);
-                border: 4px #7e66cd solid;
-                
-                opacity:0;
-            }
-            .item1{
                 animation-name: inout;
                 animation-timing-function: linear;
                 animation-duration: 5s;
                 overflow:hidden;
                 position: fixed;
                 background: rgba(0,0,0,0.95);
-                border: 4px #7e66cd solid;
+                border: 4px #3c00ff solid;
                 padding-left: 2%;
                 padding-right: 2%;
                 padding-top: 0.5%;
@@ -81,10 +60,9 @@
                                  2px -2px 0 #000,
                                  -2px -2px 0 #000;
                 }
-                97%{opacity:1}
+                80%{opacity:1}
                 100%{
                     opacity:0;
-                    background:rgba(0,0,0,0);
                 }
             }
 
@@ -130,7 +108,7 @@
                         span.innerHTML += "<p class='msg'>"+message+"</p>";
                         //span.innerHTML = name+"<br>"+message;
                         //span.className = "msg"+cnt;
-                        span.className = "item1";
+                        span.className = "item";
                         document.body.appendChild(span);
                         cnt += 1;
                     }
