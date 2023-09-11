@@ -111,6 +111,8 @@ class GetComment:
             if self.obs != False:
                 self.obs.refresh_source('popup_message.html')
                 self.obs.refresh_source('popup_message')
+                self.obs.refresh_source('owaowa.html')
+                self.obs.refresh_source('owaowa')
 
         regular_url = f"https://www.youtube.com/watch?v={self.liveid}"
         r = requests.get(regular_url)
@@ -444,6 +446,12 @@ class GetComment:
                 self.msgs = []
                 self.msg_orgs = []
                 self.icon_urls = []
+                self.gen_xml()
+                if self.obs != False:
+                    self.obs.refresh_source('popup_message.html')
+                    self.obs.refresh_source('popup_message')
+                    self.obs.refresh_source('owaowa.html')
+                    self.obs.refresh_source('owaowa')
             elif ev == '管理者IDに追加':
                 if len(val['table_comment']) > 0:
                     tmp = self.table_comment[val['table_comment'][0]]
