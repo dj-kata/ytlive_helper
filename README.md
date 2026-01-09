@@ -1,3 +1,8 @@
+# 手順
+Windowsにmingw-w64をインストール
+(以下のOnline installer)
+https://github.com/niXman/mingw-builds-binaries
+
 # ytlive_helperとは？
 YoutubeLiveの補助用ツールです。  
 コメントを受けてお題リストに追加したり、消化済みのお題をクリアしたりできます。  
