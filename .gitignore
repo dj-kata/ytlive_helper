@@ -1,0 +1,4 @@
+ytlive_helper/*.exe
+ytlive_helper/*.dist
+*.spec
+__pycache__
