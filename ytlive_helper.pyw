@@ -95,6 +95,34 @@ def debug_print(*args, **kwargs):
     if DEBUG_ENABLED:
         print(*args, **kwargs)
 
+def load_language(lang_code='ja'):
+    """言語ファイルをロード
+    
+    Args:
+        lang_code (str): 言語コード ('ja' or 'en')
+        
+    Returns:
+        dict: UI文字列の辞書
+    """
+    try:
+        if lang_code == 'ja':
+            import lang_ja
+            return lang_ja.STRINGS
+        elif lang_code == 'en':
+            import lang_en
+            return lang_en.STRINGS
+        else:
+            # デフォルトは日本語
+            import lang_ja
+            return lang_ja.STRINGS
+    except ImportError as e:
+        logger.error(f"Failed to load language file: {e}")
+        # フォールバック：最小限の辞書を返す
+        return {
+            "menu": {"file": "File", "settings": "Settings", "exit": "Exit", "language": "Language"},
+            "messages": {"error": "Error"},
+        }
+
 class StreamSettings:
     """各配信の設定を管理するクラス"""
     def __init__(self, stream_id="", platform="youtube", url="", title=""):
@@ -120,6 +148,9 @@ class GlobalSettings:
         
         # デバッグ設定
         self.debug_enabled = False
+        
+        # 言語設定
+        self.language = 'ja'  # デフォルトは日本語
         
         # 共通トリガーワード設定
         self.pushwords = ['お題 ', 'お題　', 'リク ', 'リク　']
@@ -485,6 +516,10 @@ class MultiStreamCommentHelper:
     def __init__(self):
         self.global_settings = GlobalSettings()
         self.global_settings.load()
+        
+        # 言語設定をロード
+        self.strings = load_language(self.global_settings.language)
+        
         self.stream_manager = StreamManager(self.global_settings)
         self.obs = None
         self.auto_scroll = None  # setup_guiで初期化される
@@ -555,11 +590,11 @@ class MultiStreamCommentHelper:
             entry_widget.select_range(0, tk.END)
             entry_widget.icursor(tk.END)
         
-        context_menu.add_command(label="カット", command=cut_text)
-        context_menu.add_command(label="コピー", command=copy_text)
-        context_menu.add_command(label="ペースト", command=paste_text)
+        context_menu.add_command(label=self.strings["context_menu"]["cut"], command=cut_text)
+        context_menu.add_command(label=self.strings["context_menu"]["copy"], command=copy_text)
+        context_menu.add_command(label=self.strings["context_menu"]["paste"], command=paste_text)
         context_menu.add_separator()
-        context_menu.add_command(label="全て選択", command=select_all)
+        context_menu.add_command(label=self.strings["context_menu"]["select_all"], command=select_all)
         
         def show_context_menu(event):
             try:
@@ -627,29 +662,36 @@ class MultiStreamCommentHelper:
         menubar = tk.Menu(self.root)
         self.root.config(menu=menubar)
         
+        # ファイルメニュー
         file_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="ファイル", menu=file_menu)
-        file_menu.add_command(label="設定", command=self.show_settings)
+        menubar.add_cascade(label=self.strings["menu"]["file"], menu=file_menu)
+        file_menu.add_command(label=self.strings["menu"]["settings"], command=self.show_settings)
         file_menu.add_separator()
-        file_menu.add_command(label="終了", command=self.on_closing)
+        file_menu.add_command(label=self.strings["menu"]["exit"], command=self.on_closing)
+        
+        # 言語メニュー
+        language_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label=self.strings["menu"]["language"], menu=language_menu)
+        language_menu.add_command(label="日本語", command=lambda: self.change_language('ja'))
+        language_menu.add_command(label="English", command=lambda: self.change_language('en'))
         
         # 配信管理フレーム
-        stream_frame = ttk.LabelFrame(main_frame, text="配信管理")
+        stream_frame = ttk.LabelFrame(main_frame, text=self.strings["stream"]["title"])
         stream_frame.pack(fill=tk.X, pady=(0, 10))
         
         # 配信追加
         add_frame = ttk.Frame(stream_frame)
         add_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Label(add_frame, text="配信URL:").pack(side=tk.LEFT)
+        ttk.Label(add_frame, text=self.strings["stream"]["url_label"]).pack(side=tk.LEFT)
         self.url_entry = ttk.Entry(add_frame, width=70)
         self.url_entry.pack(side=tk.LEFT, padx=(5, 0))
         self.add_entry_context_menu(self.url_entry)  # 右クリックメニュー追加
         
-        ttk.Button(add_frame, text="追加", command=self.add_stream).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Button(add_frame, text=self.strings["stream"]["add_button"], command=self.add_stream).pack(side=tk.LEFT, padx=(10, 0))
         
         # プラットフォーム表示（読み取り専用）
-        platform_label = ttk.Label(add_frame, text="プラットフォーム: 自動判定", foreground="gray")
+        platform_label = ttk.Label(add_frame, text=self.strings["stream"]["platform_auto"], foreground="gray")
         platform_label.pack(side=tk.LEFT, padx=(10, 0))
         
         # 配信リスト
@@ -657,11 +699,19 @@ class MultiStreamCommentHelper:
         stream_list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         
         # Treeview for stream list - 列名を左揃えに、カラム幅固定
-        columns = ('ID', 'Platform', 'タイトル', 'URL', 'Status')
+        columns = (self.strings["columns"]["id"], self.strings["columns"]["platform"], 
+                  self.strings["columns"]["title"], self.strings["columns"]["url"], 
+                  self.strings["columns"]["status"])
         self.stream_tree = ttk.Treeview(stream_list_frame, columns=columns, show='headings', height=6)
         
         # カラム幅を固定（stretch=Falseで自動リサイズを無効化）
-        column_widths = {'ID': 120, 'Platform': 80, 'タイトル': 250, 'URL': 300, 'Status': 100}
+        column_widths = {
+            self.strings["columns"]["id"]: 120, 
+            self.strings["columns"]["platform"]: 80, 
+            self.strings["columns"]["title"]: 250, 
+            self.strings["columns"]["url"]: 300, 
+            self.strings["columns"]["status"]: 100
+        }
         for col in columns:
             self.stream_tree.heading(col, text=col, anchor='w')  # 列名を左揃えに
             self.stream_tree.column(col, width=column_widths[col], stretch=False)
@@ -684,12 +734,12 @@ class MultiStreamCommentHelper:
         
         # 配信リスト用の右クリックメニュー
         self.stream_context_menu = tk.Menu(self.root, tearoff=0)
-        self.stream_context_menu.add_command(label="受信開始", command=self.start_selected_stream)
-        self.stream_context_menu.add_command(label="受信停止", command=self.stop_selected_stream)
+        self.stream_context_menu.add_command(label=self.strings["context_menu"]["start_receive"], command=self.start_selected_stream)
+        self.stream_context_menu.add_command(label=self.strings["context_menu"]["stop_receive"], command=self.stop_selected_stream)
         self.stream_context_menu.add_separator()
-        self.stream_context_menu.add_command(label="URLを編集", command=self.edit_stream_url)
+        self.stream_context_menu.add_command(label=self.strings["stream"]["edit_url"], command=self.edit_stream_url)
         self.stream_context_menu.add_separator()
-        self.stream_context_menu.add_command(label="削除", command=self.remove_selected_stream)
+        self.stream_context_menu.add_command(label=self.strings["stream"]["delete"], command=self.remove_selected_stream)
         
         def on_stream_right_click(event):
             # 選択されたアイテムがあるかチェック
@@ -727,12 +777,12 @@ class MultiStreamCommentHelper:
         
         # 操作説明
         help_label = ttk.Label(stream_frame, 
-                              text="※ダブルクリックで受信ON/OFF切り替え、URL列ダブルクリックでURL編集、右クリックでメニュー表示", 
+                              text=self.strings["stream"]["help_text"], 
                               foreground="gray")
         help_label.pack(padx=10, pady=(5, 10))
         
         # 共通リクエスト管理エリア
-        request_frame = ttk.LabelFrame(main_frame, text="リクエスト一覧（全配信）")
+        request_frame = ttk.LabelFrame(main_frame, text=self.strings["request"]["title"])
         request_frame.pack(fill=tk.X, pady=(10, 0))
         
         # リクエストリストTreeview
@@ -740,11 +790,21 @@ class MultiStreamCommentHelper:
         request_list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # Treeview作成
-        request_columns = ('番号', 'リクエスト内容', 'ユーザー', 'プラットフォーム')
+        request_columns = (
+            self.strings["columns"]["number"], 
+            self.strings["columns"]["request_content"], 
+            self.strings["columns"]["user"], 
+            self.strings["columns"]["platform"]
+        )
         self.request_tree = ttk.Treeview(request_list_frame, columns=request_columns, show='headings', height=8)
         
         # カラム幅を固定
-        column_widths = {'番号': 60, 'リクエスト内容': 350, 'ユーザー': 120, 'プラットフォーム': 100}
+        column_widths = {
+            self.strings["columns"]["number"]: 60, 
+            self.strings["columns"]["request_content"]: 350, 
+            self.strings["columns"]["user"]: 120, 
+            self.strings["columns"]["platform"]: 100
+        }
         for col in request_columns:
             self.request_tree.heading(col, text=col, anchor='w')
             self.request_tree.column(col, width=column_widths[col], stretch=False)
@@ -770,27 +830,39 @@ class MultiStreamCommentHelper:
         req_button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         
         # 手動追加エントリ
-        ttk.Label(req_button_frame, text="手動追加:").pack(side=tk.LEFT)
+        ttk.Label(req_button_frame, text=self.strings["request"]["manual_add_label"]).pack(side=tk.LEFT)
         self.manual_req_entry = ttk.Entry(req_button_frame, width=30)
         self.manual_req_entry.pack(side=tk.LEFT, padx=(5, 10))
         self.add_entry_context_menu(self.manual_req_entry)  # 右クリックメニュー追加
         
-        ttk.Button(req_button_frame, text="追加", command=self.add_manual_request).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(req_button_frame, text="削除", command=self.remove_selected_request).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(req_button_frame, text="上に移動", command=self.move_request_up).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(req_button_frame, text="下に移動", command=self.move_request_down).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(req_button_frame, text="クリア", command=self.clear_all_requests).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(req_button_frame, text=self.strings["request"]["add_button"], command=self.add_manual_request).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(req_button_frame, text=self.strings["request"]["delete_button"], command=self.remove_selected_request).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(req_button_frame, text=self.strings["request"]["move_up"], command=self.move_request_up).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(req_button_frame, text=self.strings["request"]["move_down"], command=self.move_request_down).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(req_button_frame, text=self.strings["request"]["clear"], command=self.clear_all_requests).pack(side=tk.LEFT, padx=(0, 5))
         
         # 共通コメント表示エリア
-        comment_frame = ttk.LabelFrame(main_frame, text="コメント一覧（全配信）")
+        comment_frame = ttk.LabelFrame(main_frame, text=self.strings["comment"]["title"])
         comment_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
         
         # コメントTreeview - 横スクロールも追加、カラム幅固定
-        comment_columns = ('日時', 'ユーザー', 'コメント', '配信ID', 'プラットフォーム')
+        comment_columns = (
+            self.strings["columns"]["datetime"], 
+            self.strings["columns"]["user"], 
+            self.strings["columns"]["comment"], 
+            self.strings["columns"]["stream_id"], 
+            self.strings["columns"]["platform"]
+        )
         self.comment_tree = ttk.Treeview(comment_frame, columns=comment_columns, show='headings', height=12)
         
         # カラム幅を固定（stretch=Falseで自動リサイズを無効化）
-        column_widths = {'日時': 140, 'ユーザー': 120, 'コメント': 400, '配信ID': 120, 'プラットフォーム': 100}
+        column_widths = {
+            self.strings["columns"]["datetime"]: 140, 
+            self.strings["columns"]["user"]: 120, 
+            self.strings["columns"]["comment"]: 400, 
+            self.strings["columns"]["stream_id"]: 120, 
+            self.strings["columns"]["platform"]: 100
+        }
         for col in comment_columns:
             self.comment_tree.heading(col, text=col, anchor='w')  # 列名を左揃えに
             self.comment_tree.column(col, width=column_widths[col], stretch=False)
@@ -804,8 +876,8 @@ class MultiStreamCommentHelper:
         
         # 右クリックメニュー
         self.comment_context_menu = tk.Menu(self.root, tearoff=0)
-        self.comment_context_menu.add_command(label="管理者IDに追加", command=self.add_manager_from_comment)
-        self.comment_context_menu.add_command(label="NGユーザに追加", command=self.add_ng_user_from_comment)
+        self.comment_context_menu.add_command(label=self.strings["context_menu"]["add_manager"], command=self.add_manager_from_comment)
+        self.comment_context_menu.add_command(label=self.strings["context_menu"]["add_ng_user"], command=self.add_ng_user_from_comment)
         
         def on_comment_right_click(event):
             # 選択されたアイテムがあるかチェック
@@ -829,11 +901,11 @@ class MultiStreamCommentHelper:
         comment_button_frame = ttk.Frame(comment_frame)
         comment_button_frame.grid(row=2, column=0, columnspan=2, sticky='ew', padx=10, pady=(0, 10))
         
-        ttk.Button(comment_button_frame, text="クリア", command=self.clear_all_comments).pack(side=tk.LEFT)
+        ttk.Button(comment_button_frame, text=self.strings["comment"]["clear_button"], command=self.clear_all_comments).pack(side=tk.LEFT)
         
         # 自動スクロール設定
         self.auto_scroll = tk.BooleanVar(value=True)
-        ttk.Checkbutton(comment_button_frame, text="自動スクロール", variable=self.auto_scroll).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Checkbutton(comment_button_frame, text=self.strings["comment"]["auto_scroll"], variable=self.auto_scroll).pack(side=tk.LEFT, padx=(10, 0))
         
         # ノートブック（配信個別設定用タブ）
         self.notebook = ttk.Notebook(main_frame)
@@ -863,13 +935,13 @@ class MultiStreamCommentHelper:
         debug_print(f"DEBUG: add_stream called with URL: {url}")
         
         if not url:
-            messagebox.showerror("エラー", "URLを入力してください")
+            messagebox.showerror(self.strings["messages"]["error"], self.strings["messages"]["url_required"])
             return
             
         # URLからプラットフォームを自動判定
         platform = self.detect_platform(url)
         if not platform:
-            messagebox.showerror("エラー", "対応していないURLです。\nYouTubeまたはTwitchのURLを入力してください。")
+            messagebox.showerror(self.strings["messages"]["error"], self.strings["messages"]["unsupported_url"])
             return
             
         debug_print(f"DEBUG: Detected platform: {platform}")
@@ -915,7 +987,7 @@ class MultiStreamCommentHelper:
             
         # 新しい項目を追加
         for stream_id, settings in self.stream_manager.streams.items():
-            status = "● 受信中" if settings.is_active else "○ 停止中"
+            status = self.strings["stream"]["status_receiving"] if settings.is_active else self.strings["stream"]["status_stopped"]
             # タイトルが長い場合は省略表示
             display_title = settings.title[:40] + "..." if len(settings.title) > 40 else settings.title
             self.stream_tree.insert('', tk.END, values=(
@@ -929,52 +1001,53 @@ class MultiStreamCommentHelper:
         self.notebook.add(tab_frame, text=f"{stream_settings.platform}: {stream_settings.stream_id}")
         
         # 配信情報表示
-        info_frame = ttk.LabelFrame(tab_frame, text="配信情報")
+        info_frame = ttk.LabelFrame(tab_frame, text=self.strings["stream_info"]["title"])
         info_frame.pack(fill=tk.X, padx=10, pady=10)
         
         # タイトル表示
         title_info_frame = ttk.Frame(info_frame)
         title_info_frame.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(title_info_frame, text="タイトル:").pack(side=tk.LEFT)
-        title_label = ttk.Label(title_info_frame, text=stream_settings.title if stream_settings.title else "(取得中...)", 
+        ttk.Label(title_info_frame, text=self.strings["stream_info"]["stream_title"]).pack(side=tk.LEFT)
+        title_text = stream_settings.title if stream_settings.title else self.strings["stream_info"]["title_loading"]
+        title_label = ttk.Label(title_info_frame, text=title_text, 
                                foreground="blue", wraplength=500)
         title_label.pack(side=tk.LEFT, padx=(5, 0))
         
         # URL表示
         url_info_frame = ttk.Frame(info_frame)
         url_info_frame.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(url_info_frame, text="URL:").pack(side=tk.LEFT)
+        ttk.Label(url_info_frame, text=self.strings["stream_info"]["url"]).pack(side=tk.LEFT)
         url_label = ttk.Label(url_info_frame, text=stream_settings.url, foreground="blue")
         url_label.pack(side=tk.LEFT, padx=(5, 0))
         
         # プラットフォーム表示
         platform_info_frame = ttk.Frame(info_frame)
         platform_info_frame.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(platform_info_frame, text="プラットフォーム:").pack(side=tk.LEFT)
+        ttk.Label(platform_info_frame, text=self.strings["stream_info"]["platform"]).pack(side=tk.LEFT)
         ttk.Label(platform_info_frame, text=stream_settings.platform.title()).pack(side=tk.LEFT, padx=(5, 0))
         
         # ステータス表示
         status_info_frame = ttk.Frame(info_frame)
         status_info_frame.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(status_info_frame, text="ステータス:").pack(side=tk.LEFT)
-        status_label = ttk.Label(status_info_frame, text="停止中", foreground="red")
+        ttk.Label(status_info_frame, text=self.strings["stream_info"]["status"]).pack(side=tk.LEFT)
+        status_label = ttk.Label(status_info_frame, text=self.strings["stream_info"]["status_stopped"], foreground="red")
         status_label.pack(side=tk.LEFT, padx=(5, 0))
         
         # 統計情報表示
-        stats_frame = ttk.LabelFrame(tab_frame, text="統計情報")
+        stats_frame = ttk.LabelFrame(tab_frame, text=self.strings["stats"]["title"])
         stats_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         
         # コメント数表示
         comment_count_frame = ttk.Frame(stats_frame)
         comment_count_frame.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(comment_count_frame, text="受信コメント数:").pack(side=tk.LEFT)
+        ttk.Label(comment_count_frame, text=self.strings["stats"]["comment_count"]).pack(side=tk.LEFT)
         comment_count_label = ttk.Label(comment_count_frame, text="0")
         comment_count_label.pack(side=tk.LEFT, padx=(5, 0))
         
         # リクエスト処理数表示
         request_count_frame = ttk.Frame(stats_frame)
         request_count_frame.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(request_count_frame, text="処理したリクエスト数:").pack(side=tk.LEFT)
+        ttk.Label(request_count_frame, text=self.strings["stats"]["request_count"]).pack(side=tk.LEFT)
         request_count_label = ttk.Label(request_count_frame, text="0")
         request_count_label.pack(side=tk.LEFT, padx=(5, 0))
         
@@ -989,7 +1062,7 @@ class MultiStreamCommentHelper:
         """選択された配信を開始"""
         selection = self.stream_tree.selection()
         if not selection:
-            messagebox.showwarning("警告", "配信を選択してください")
+            messagebox.showwarning(self.strings["messages"]["warning"], self.strings["messages"]["select_stream"])
             return
             
         item = self.stream_tree.item(selection[0])
@@ -1014,13 +1087,16 @@ class MultiStreamCommentHelper:
             # 受信開始時のダイアログを削除（メッセージを表示しない）
         else:
             print(f"DEBUG: start_stream returned False")
-            messagebox.showerror("エラー", f"配信 {stream_id} の開始に失敗しました")
+            messagebox.showerror(
+                self.strings["messages"]["error"], 
+                self.strings["messages"]["start_failed"].format(stream_id=stream_id)
+            )
             
     def stop_selected_stream(self):
         """選択された配信を停止"""
         selection = self.stream_tree.selection()
         if not selection:
-            messagebox.showwarning("警告", "配信を選択してください")
+            messagebox.showwarning(self.strings["messages"]["warning"], self.strings["messages"]["select_stream"])
             return
             
         item = self.stream_tree.item(selection[0])
@@ -1037,13 +1113,16 @@ class MultiStreamCommentHelper:
         """選択された配信を削除"""
         selection = self.stream_tree.selection()
         if not selection:
-            messagebox.showwarning("警告", "配信を選択してください")
+            messagebox.showwarning(self.strings["messages"]["warning"], self.strings["messages"]["select_stream"])
             return
             
         item = self.stream_tree.item(selection[0])
         stream_id = item['values'][0]
         
-        if messagebox.askyesno("確認", f"配信 {stream_id} を削除しますか？"):
+        if messagebox.askyesno(
+            self.strings["messages"]["confirm"], 
+            self.strings["messages"]["delete_stream_confirm"].format(stream_id=stream_id)
+        ):
             self.stream_manager.remove_stream(stream_id)
             self.update_stream_list()
             # タブも削除
@@ -1057,7 +1136,7 @@ class MultiStreamCommentHelper:
         """選択された配信のURLを編集"""
         selection = self.stream_tree.selection()
         if not selection:
-            messagebox.showwarning("警告", "配信を選択してください")
+            messagebox.showwarning(self.strings["messages"]["warning"], self.strings["messages"]["select_stream"])
             return
         
         item = self.stream_tree.item(selection[0])
@@ -1071,7 +1150,7 @@ class MultiStreamCommentHelper:
         
         # カスタムURL編集ダイアログ
         dialog = tk.Toplevel(self.root)
-        dialog.title("URL編集")
+        dialog.title(self.strings["dialog"]["url_edit_title"])
         dialog.geometry("650x150")
         dialog.transient(self.root)
         dialog.grab_set()
@@ -1084,7 +1163,7 @@ class MultiStreamCommentHelper:
         # URL入力
         url_frame = ttk.Frame(dialog)
         url_frame.pack(fill=tk.X, padx=20, pady=10)
-        ttk.Label(url_frame, text="新しいURL:").pack(side=tk.LEFT)
+        ttk.Label(url_frame, text=self.strings["dialog"]["new_url_label"]).pack(side=tk.LEFT)
         url_entry = ttk.Entry(url_frame, width=50)
         url_entry.pack(side=tk.LEFT, padx=(5, 0), fill=tk.X, expand=True)
         url_entry.insert(0, current_url)
@@ -1107,8 +1186,8 @@ class MultiStreamCommentHelper:
         def on_cancel():
             dialog.destroy()
         
-        ttk.Button(button_frame, text="OK", command=on_ok).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(button_frame, text="キャンセル", command=on_cancel).pack(side=tk.RIGHT)
+        ttk.Button(button_frame, text=self.strings["dialog"]["ok_button"], command=on_ok).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text=self.strings["dialog"]["cancel_button"], command=on_cancel).pack(side=tk.RIGHT)
         
         # Enterキーで確定
         url_entry.bind("<Return>", lambda e: on_ok())
@@ -1129,7 +1208,10 @@ class MultiStreamCommentHelper:
             # プラットフォームを再判定
             new_platform = self.detect_platform(new_url)
             if not new_platform:
-                messagebox.showerror("エラー", "対応していないURLです。\nYouTubeまたはTwitchのURLを入力してください。")
+                messagebox.showerror(
+                    self.strings["messages"]["error"], 
+                    self.strings["messages"]["unsupported_url"]
+                )
                 return
             
             # URLとプラットフォームを更新
@@ -1142,23 +1224,29 @@ class MultiStreamCommentHelper:
             
             # タイトルラベルが存在すれば更新
             if hasattr(settings, 'title_label'):
-                settings.title_label.config(text=new_title if new_title else "(取得中...)")
+                title_text = new_title if new_title else self.strings["stream_info"]["title_loading"]
+                settings.title_label.config(text=title_text)
             
             # リストを更新
             self.update_stream_list()
             
             # 配信が実行中の場合は警告
             if settings.is_active:
-                messagebox.showinfo("URL更新", 
-                    "URLを更新しました。\n\n配信が実行中です。変更を反映するには、一度停止して再度開始してください。")
+                messagebox.showinfo(
+                    self.strings["messages"]["info"], 
+                    self.strings["messages"]["url_updated_running"]
+                )
             else:
-                messagebox.showinfo("URL更新", "URLを更新しました。")
+                messagebox.showinfo(
+                    self.strings["messages"]["info"], 
+                    self.strings["messages"]["url_updated"]
+                )
                     
     def configure_selected_stream(self):
         """選択された配信の設定"""
         selection = self.stream_tree.selection()
         if not selection:
-            messagebox.showwarning("警告", "配信を選択してください")
+            messagebox.showwarning(self.strings["messages"]["warning"], self.strings["messages"]["select_stream"])
             return
             
         item = self.stream_tree.item(selection[0])
@@ -1277,12 +1365,18 @@ class MultiStreamCommentHelper:
             # 重複チェック
             for manager in self.global_settings.managers:
                 if manager['platform'] == platform and manager['id'] == author_id:
-                    messagebox.showinfo("管理者追加", f"{author}は既に管理者に登録されています。")
+                    messagebox.showinfo(
+                        self.strings["messages"]["info"], 
+                        self.strings["messages"]["manager_exists"].format(author=author)
+                    )
                     return
             
             self.global_settings.managers.append(manager_entry)
             self.global_settings.save()
-            messagebox.showinfo("管理者追加", f"{author}を管理者に追加しました。")
+            messagebox.showinfo(
+                self.strings["messages"]["info"], 
+                self.strings["messages"]["manager_added"].format(author=author)
+            )
 
     def add_ng_user_from_comment(self):
         """選択されたコメントのユーザーをNGユーザに追加"""
@@ -1308,12 +1402,18 @@ class MultiStreamCommentHelper:
             # 重複チェック
             for ng in self.global_settings.ng_users:
                 if ng['platform'] == platform and ng['id'] == author_id:
-                    messagebox.showinfo("NGユーザ追加", f"{author}は既にNGユーザに登録されています。")
+                    messagebox.showinfo(
+                        self.strings["messages"]["info"], 
+                        self.strings["messages"]["ng_user_exists"].format(author=author)
+                    )
                     return
 
             self.global_settings.ng_users.append(ng_entry)
             self.global_settings.save()
-            messagebox.showinfo("NGユーザ追加", f"{author}をNGユーザに追加しました。")
+            messagebox.showinfo(
+                self.strings["messages"]["info"], 
+                self.strings["messages"]["ng_user_added"].format(author=author)
+            )
 
     def process_request_commands(self, stream_id, comment_data):
         """リクエストコマンドを処理"""
@@ -1470,14 +1570,20 @@ class MultiStreamCommentHelper:
             
     def clear_all_requests(self):
         """全リクエストをクリア"""
-        if messagebox.askyesno("確認", "全てのリクエストをクリアしますか？"):
+        if messagebox.askyesno(
+            self.strings["messages"]["confirm"], 
+            self.strings["messages"]["clear_requests_confirm"]
+        ):
             self.common_requests.clear()
             self.update_request_display()
             self.generate_xml()
             
     def clear_all_comments(self):
         """全コメントをクリア"""
-        if messagebox.askyesno("確認", "全てのコメントをクリアしますか？"):
+        if messagebox.askyesno(
+            self.strings["messages"]["confirm"], 
+            self.strings["messages"]["clear_comments_confirm"]
+        ):
             # Treeviewをクリア
             for item in self.comment_tree.get_children():
                 self.comment_tree.delete(item)
@@ -1491,7 +1597,7 @@ class MultiStreamCommentHelper:
     def show_settings(self):
         """設定ダイアログを表示"""
         settings_window = tk.Toplevel(self.root)
-        settings_window.title("設定")
+        settings_window.title(self.strings["settings"]["title"])
         settings_window.geometry("600x600")
         settings_window.transient(self.root)
         settings_window.grab_set()
@@ -1502,52 +1608,52 @@ class MultiStreamCommentHelper:
         
         # OBS設定タブ
         obs_frame = ttk.Frame(settings_notebook)
-        settings_notebook.add(obs_frame, text="OBS設定")
+        settings_notebook.add(obs_frame, text=self.strings["settings"]["obs_tab"])
         
-        obs_settings_frame = ttk.LabelFrame(obs_frame, text="OBS接続設定")
+        obs_settings_frame = ttk.LabelFrame(obs_frame, text=self.strings["settings"]["obs_connection"])
         obs_settings_frame.pack(fill=tk.X, padx=10, pady=10)
         
         # OBS設定フォーム
         host_frame = ttk.Frame(obs_settings_frame)
         host_frame.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(host_frame, text="ホスト:").pack(side=tk.LEFT)
+        ttk.Label(host_frame, text=self.strings["settings"]["host"]).pack(side=tk.LEFT)
         obs_host_var = tk.StringVar(value=self.global_settings.obs_host)
         ttk.Entry(host_frame, textvariable=obs_host_var, width=30).pack(side=tk.LEFT, padx=(5, 0))
         
         port_frame = ttk.Frame(obs_settings_frame)
         port_frame.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(port_frame, text="ポート:").pack(side=tk.LEFT)
+        ttk.Label(port_frame, text=self.strings["settings"]["port"]).pack(side=tk.LEFT)
         obs_port_var = tk.StringVar(value=str(self.global_settings.obs_port))
         ttk.Entry(port_frame, textvariable=obs_port_var, width=30).pack(side=tk.LEFT, padx=(5, 0))
         
         passwd_frame = ttk.Frame(obs_settings_frame)
         passwd_frame.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(passwd_frame, text="パスワード:").pack(side=tk.LEFT)
+        ttk.Label(passwd_frame, text=self.strings["settings"]["password"]).pack(side=tk.LEFT)
         obs_passwd_var = tk.StringVar(value=self.global_settings.obs_passwd)
         ttk.Entry(passwd_frame, textvariable=obs_passwd_var, width=30, show="*").pack(side=tk.LEFT, padx=(5, 0))
         
         # その他の設定
-        other_settings_frame = ttk.LabelFrame(obs_frame, text="その他の設定")
+        other_settings_frame = ttk.LabelFrame(obs_frame, text=self.strings["settings"]["other_settings"])
         other_settings_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         
         keep_top_var = tk.BooleanVar(value=self.global_settings.keep_on_top)
-        ttk.Checkbutton(other_settings_frame, text="ウィンドウを最前面に表示", 
+        ttk.Checkbutton(other_settings_frame, text=self.strings["settings"]["keep_on_top"], 
                        variable=keep_top_var).pack(anchor=tk.W, padx=10, pady=5)
         
         # デバッグ設定
-        debug_settings_frame = ttk.LabelFrame(obs_frame, text="デバッグ設定")
+        debug_settings_frame = ttk.LabelFrame(obs_frame, text=self.strings["settings"]["debug_settings"])
         debug_settings_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         
         debug_enabled_var = tk.BooleanVar(value=self.global_settings.debug_enabled)
-        ttk.Checkbutton(debug_settings_frame, text="デバッグモードを有効にする（再起動が必要）", 
+        ttk.Checkbutton(debug_settings_frame, text=self.strings["settings"]["debug_mode"], 
                        variable=debug_enabled_var).pack(anchor=tk.W, padx=10, pady=5)
         
         # トリガーワード設定タブ
         trigger_frame = ttk.Frame(settings_notebook)
-        settings_notebook.add(trigger_frame, text="トリガーワード")
+        settings_notebook.add(trigger_frame, text=self.strings["settings"]["trigger_tab"])
         
         # プッシュワード設定
-        push_frame = ttk.LabelFrame(trigger_frame, text="リクエスト追加ワード（全配信共通）")
+        push_frame = ttk.LabelFrame(trigger_frame, text=self.strings["settings"]["push_word"])
         push_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         push_list_frame = ttk.Frame(push_frame)
@@ -1568,7 +1674,10 @@ class MultiStreamCommentHelper:
         push_button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         
         def add_pushword():
-            word = simpledialog.askstring("追加", "リクエスト追加ワードを入力:")
+            word = simpledialog.askstring(
+                self.strings["dialog"]["add_word_title"], 
+                self.strings["dialog"]["add_push_word_prompt"]
+            )
             if word and word not in self.global_settings.pushwords:
                 self.global_settings.pushwords.append(word)
                 push_listbox.insert(tk.END, word)
@@ -1580,11 +1689,11 @@ class MultiStreamCommentHelper:
                 self.global_settings.pushwords.pop(index)
                 push_listbox.delete(index)
         
-        ttk.Button(push_button_frame, text="追加", command=add_pushword).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(push_button_frame, text="削除", command=remove_pushword).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(push_button_frame, text=self.strings["settings"]["add_button"], command=add_pushword).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(push_button_frame, text=self.strings["settings"]["delete_button"], command=remove_pushword).pack(side=tk.LEFT, padx=(0, 5))
         
         # プルワード設定
-        pull_frame = ttk.LabelFrame(trigger_frame, text="リクエスト削除ワード（全配信共通）")
+        pull_frame = ttk.LabelFrame(trigger_frame, text=self.strings["settings"]["pull_word"])
         pull_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         
         pull_list_frame = ttk.Frame(pull_frame)
@@ -1605,7 +1714,10 @@ class MultiStreamCommentHelper:
         pull_button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         
         def add_pullword():
-            word = simpledialog.askstring("追加", "リクエスト削除ワードを入力:")
+            word = simpledialog.askstring(
+                self.strings["dialog"]["add_word_title"], 
+                self.strings["dialog"]["add_pull_word_prompt"]
+            )
             if word and word not in self.global_settings.pullwords:
                 self.global_settings.pullwords.append(word)
                 pull_listbox.insert(tk.END, word)
@@ -1617,26 +1729,26 @@ class MultiStreamCommentHelper:
                 self.global_settings.pullwords.pop(index)
                 pull_listbox.delete(index)
         
-        ttk.Button(pull_button_frame, text="追加", command=add_pullword).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(pull_button_frame, text="削除", command=remove_pullword).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(pull_button_frame, text=self.strings["settings"]["add_button"], command=add_pullword).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(pull_button_frame, text=self.strings["settings"]["delete_button"], command=remove_pullword).pack(side=tk.LEFT, padx=(0, 5))
         
         # 権限設定タブ
         permission_frame = ttk.Frame(settings_notebook)
-        settings_notebook.add(permission_frame, text="権限設定")
+        settings_notebook.add(permission_frame, text=self.strings["settings"]["permission_tab"])
         
-        perm_settings_frame = ttk.LabelFrame(permission_frame, text="権限設定（全配信共通）")
+        perm_settings_frame = ttk.LabelFrame(permission_frame, text=self.strings["settings"]["permission_title"])
         perm_settings_frame.pack(fill=tk.X, padx=10, pady=10)
         
         push_manager_var = tk.BooleanVar(value=self.global_settings.push_manager_only)
-        ttk.Checkbutton(perm_settings_frame, text="リクエスト追加を管理者のみ許可", 
+        ttk.Checkbutton(perm_settings_frame, text=self.strings["settings"]["push_manager_only"], 
                        variable=push_manager_var).pack(anchor=tk.W, padx=10, pady=5)
         
         pull_manager_var = tk.BooleanVar(value=self.global_settings.pull_manager_only)
-        ttk.Checkbutton(perm_settings_frame, text="リクエスト削除を管理者のみ許可", 
+        ttk.Checkbutton(perm_settings_frame, text=self.strings["settings"]["pull_manager_only"], 
                        variable=pull_manager_var).pack(anchor=tk.W, padx=10, pady=5)
         
         # 管理者設定
-        manager_frame = ttk.LabelFrame(permission_frame, text="管理者設定")
+        manager_frame = ttk.LabelFrame(permission_frame, text=self.strings["settings"]["manager_title"])
         manager_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         manager_list_frame = ttk.Frame(manager_frame)
@@ -1664,16 +1776,16 @@ class MultiStreamCommentHelper:
                 self.global_settings.managers.pop(index)
                 manager_listbox.delete(index)
         
-        ttk.Button(manager_button_frame, text="削除", command=remove_manager).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(manager_button_frame, text=self.strings["settings"]["delete_button"], command=remove_manager).pack(side=tk.LEFT, padx=(0, 5))
         
-        ttk.Label(manager_frame, text="※コメントから右クリックで管理者IDに追加することもできます", 
+        ttk.Label(manager_frame, text=self.strings["settings"]["manager_note"], 
                  foreground="gray").pack(padx=10, pady=(0, 10))
         
         # NGユーザ設定タブ
         ng_user_frame = ttk.Frame(settings_notebook)
-        settings_notebook.add(ng_user_frame, text="NGユーザ設定")
+        settings_notebook.add(ng_user_frame, text=self.strings["settings"]["ng_user_tab"])
         
-        ng_settings_frame = ttk.LabelFrame(ng_user_frame, text="NGユーザ管理")
+        ng_settings_frame = ttk.LabelFrame(ng_user_frame, text=self.strings["settings"]["ng_user_title"])
         ng_settings_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         ng_list_frame = ttk.Frame(ng_settings_frame)
@@ -1701,9 +1813,9 @@ class MultiStreamCommentHelper:
                 self.global_settings.ng_users.pop(index)
                 ng_listbox.delete(index)
         
-        ttk.Button(ng_button_frame, text="削除", command=remove_ng_user).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(ng_button_frame, text=self.strings["settings"]["delete_button"], command=remove_ng_user).pack(side=tk.LEFT, padx=(0, 5))
         
-        ttk.Label(ng_settings_frame, text="※コメント一覧から右クリックでNGユーザに追加できます", 
+        ttk.Label(ng_settings_frame, text=self.strings["settings"]["ng_user_note"], 
                  foreground="gray").pack(padx=10, pady=(0, 10))
         
         # ボタン
@@ -1716,7 +1828,10 @@ class MultiStreamCommentHelper:
             try:
                 self.global_settings.obs_port = int(obs_port_var.get())
             except ValueError:
-                messagebox.showerror("エラー", "正しいport番号を入力してください")
+                messagebox.showerror(
+                    self.strings["messages"]["error"], 
+                    self.strings["messages"]["invalid_port"]
+                )
                 return
             self.global_settings.obs_passwd = obs_passwd_var.get()
             self.global_settings.keep_on_top = keep_top_var.get()
@@ -1733,8 +1848,10 @@ class MultiStreamCommentHelper:
             
             # デバッグ設定が変更された場合の警告
             if old_debug_enabled != self.global_settings.debug_enabled:
-                messagebox.showinfo("デバッグ設定変更", 
-                                   "デバッグ設定の変更を反映するには、アプリケーションを再起動してください。")
+                messagebox.showinfo(
+                    self.strings["messages"]["info"], 
+                    self.strings["messages"]["debug_restart_required"]
+                )
             
             # 最前面設定を適用
             self.root.attributes('-topmost', self.global_settings.keep_on_top)
@@ -1744,8 +1861,8 @@ class MultiStreamCommentHelper:
             
             settings_window.destroy()
             
-        ttk.Button(button_frame, text="保存", command=save_settings).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(button_frame, text="キャンセル", command=settings_window.destroy).pack(side=tk.RIGHT)
+        ttk.Button(button_frame, text=self.strings["settings"]["save_button"], command=save_settings).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text=self.strings["settings"]["cancel_button"], command=settings_window.destroy).pack(side=tk.RIGHT)
         
     def on_closing(self):
         """アプリケーション終了時の処理"""
@@ -1765,6 +1882,85 @@ class MultiStreamCommentHelper:
         
         # ウィンドウを閉じる
         self.root.destroy()
+    
+    def change_language(self, lang_code):
+        """言語を変更
+        
+        Args:
+            lang_code (str): 言語コード ('ja' or 'en')
+        """
+        if lang_code != self.global_settings.language:
+            self.global_settings.language = lang_code
+            self.global_settings.save()
+            
+            # 言語ファイルを再ロード
+            self.strings = load_language(lang_code)
+            
+            # GUIを再構築
+            self.rebuild_gui()
+    
+    def rebuild_gui(self):
+        """GUIを再構築（言語切り替え時に使用）"""
+        # 現在の配信状態を保存
+        stream_backups = []
+        for stream_id, settings in self.stream_manager.streams.items():
+            stream_backups.append({
+                'stream_id': stream_id,
+                'platform': settings.platform,
+                'url': settings.url,
+                'title': settings.title,
+                'is_active': settings.is_active,
+                'comments_count': len(settings.comments),
+                'processed_requests': getattr(settings, 'processed_requests', 0)
+            })
+        
+        # コメントデータを保存（全配信の最新1000件まで）
+        all_comments = []
+        for stream_id, settings in self.stream_manager.streams.items():
+            all_comments.extend(settings.comments[-1000:])  # 最新1000件
+        
+        # メインフレームの全ウィジェットを削除
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        
+        # GUIを再構築
+        self.setup_gui()
+        
+        # 配信タブを復元
+        for backup in stream_backups:
+            if backup['stream_id'] in self.stream_manager.streams:
+                settings = self.stream_manager.streams[backup['stream_id']]
+                self.add_stream_tab(settings)
+                
+                # ステータスラベルを更新
+                if hasattr(settings, 'status_label'):
+                    if backup['is_active']:
+                        settings.status_label.config(
+                            text=self.strings["stream_info"]["status_running"], 
+                            foreground="green"
+                        )
+                    else:
+                        settings.status_label.config(
+                            text=self.strings["stream_info"]["status_stopped"], 
+                            foreground="red"
+                        )
+                
+                # カウント表示を更新
+                if hasattr(settings, 'comment_count_label'):
+                    settings.comment_count_label.config(text=str(backup['comments_count']))
+                if hasattr(settings, 'request_count_label'):
+                    settings.request_count_label.config(text=str(backup['processed_requests']))
+        
+        # 配信リストを更新
+        self.update_stream_list()
+        
+        # リクエストリストを更新
+        self.update_request_display()
+        
+        # コメント一覧を復元（時系列順でソート）
+        all_comments.sort(key=lambda x: x.get('timestamp', ''))
+        for comment_data in all_comments:
+            self.update_comment_display(comment_data)
         
     def run(self):
         """アプリケーション実行"""
