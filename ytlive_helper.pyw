@@ -217,6 +217,168 @@ class GlobalSettings:
         if not hasattr(self, 'ng_users'):
             self.ng_users = []
 
+class TwitchAPI:
+    """Twitch API クライアント（タイトル取得用）"""
+    
+    def __init__(self):
+        """初期化"""
+        self.access_token = None
+        self.client_id = None
+        self.client_secret = None
+        
+        # config_secret.py から認証情報を読み込む
+        try:
+            import config_secret
+            self.client_id, self.client_secret = config_secret.get_twitch_credentials()
+            logger.info("Twitch API credentials loaded from config_secret.py")
+        except ImportError:
+            logger.warning("config_secret.py not found - Twitch API title fetching disabled")
+        except Exception as e:
+            logger.warning(f"Failed to load Twitch API credentials: {e}")
+    
+    def get_access_token(self):
+        """OAuth 2.0 Client Credentials Flow でアクセストークンを取得"""
+        if not self.client_id or not self.client_secret:
+            return None
+        
+        url = "https://id.twitch.tv/oauth2/token"
+        
+        params = {
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "grant_type": "client_credentials"
+        }
+        
+        try:
+            response = requests.post(url, params=params, timeout=5)
+            response.raise_for_status()
+            
+            data = response.json()
+            self.access_token = data["access_token"]
+            
+            logger.info("Twitch API access token obtained")
+            return self.access_token
+            
+        except Exception as e:
+            logger.warning(f"Failed to get Twitch access token: {e}")
+            return None
+    
+    def get_user_id(self, username):
+        """ユーザー名からユーザーIDを取得"""
+        if not self.access_token:
+            if not self.get_access_token():
+                return None
+        
+        url = "https://api.twitch.tv/helix/users"
+        
+        headers = {
+            "Client-ID": self.client_id,
+            "Authorization": f"Bearer {self.access_token}"
+        }
+        
+        params = {
+            "login": username
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=5)
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            if data["data"]:
+                user_id = data["data"][0]["id"]
+                logger.debug(f"Twitch user ID obtained: {username} -> {user_id}")
+                return user_id
+            else:
+                logger.warning(f"Twitch user not found: {username}")
+                return None
+                
+        except Exception as e:
+            logger.warning(f"Failed to get Twitch user ID: {e}")
+            return None
+    
+    def get_stream_title(self, user_id):
+        """ユーザーIDから配信タイトルを取得"""
+        if not self.access_token:
+            if not self.get_access_token():
+                return None
+        
+        url = "https://api.twitch.tv/helix/streams"
+        
+        headers = {
+            "Client-ID": self.client_id,
+            "Authorization": f"Bearer {self.access_token}"
+        }
+        
+        params = {
+            "user_id": user_id
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=5)
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            if data["data"]:
+                stream = data["data"][0]
+                title = stream["title"]
+                logger.info(f"Twitch stream title obtained: {title}")
+                return title
+            else:
+                logger.warning("Twitch stream is not live")
+                return None
+                
+        except Exception as e:
+            logger.warning(f"Failed to get Twitch stream title: {e}")
+            return None
+    
+    def get_title_from_url(self, url):
+        """Twitch URLから配信タイトルを取得
+        
+        Args:
+            url (str): Twitch配信URL
+            
+        Returns:
+            str: 配信タイトル、取得失敗時はNone
+        """
+        # URLからユーザー名を抽出
+        username = self.extract_username_from_url(url)
+        if not username:
+            logger.warning(f"Failed to extract username from URL: {url}")
+            return None
+        
+        # ユーザーIDを取得
+        user_id = self.get_user_id(username)
+        if not user_id:
+            return None
+        
+        # タイトルを取得
+        return self.get_stream_title(user_id)
+    
+    @staticmethod
+    def extract_username_from_url(url):
+        """Twitch URLからユーザー名を抽出"""
+        url = url.strip()
+        
+        # プロトコルを削除
+        if url.startswith('https://'):
+            url = url[8:]
+        elif url.startswith('http://'):
+            url = url[7:]
+        
+        # www. を削除
+        if url.startswith('www.'):
+            url = url[4:]
+        
+        # twitch.tv/ で始まるか確認
+        if url.startswith('twitch.tv/'):
+            username = url[10:].split('/')[0].split('?')[0]
+            return username
+        
+        return None
+
 class CommentReceiver:
     """コメント受信の基底クラス"""
     def __init__(self, settings):
@@ -575,7 +737,10 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         return None
     
     def get_stream_title(self, platform, url):
-        """配信タイトルを取得（BeautifulSoupでスクレイピング）
+        """配信タイトルを取得
+        
+        Twitchの場合: Twitch API -> BeautifulSoupフォールバック
+        YouTubeの場合: BeautifulSoupでスクレイピング
         
         Args:
             platform (str): 'youtube' or 'twitch'
@@ -584,6 +749,27 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         Returns:
             str: 配信タイトル（取得できない場合は空文字列）
         """
+        # Twitchの場合、まずAPIを試す
+        if platform == 'twitch':
+            try:
+                # TwitchAPIインスタンスを作成（キャッシュ）
+                if not hasattr(self, 'twitch_api'):
+                    self.twitch_api = TwitchAPI()
+                
+                # APIでタイトルを取得
+                if self.twitch_api.client_id and self.twitch_api.client_secret:
+                    title = self.twitch_api.get_title_from_url(url)
+                    if title:
+                        logger.info(f"Twitch title obtained via API: {title}")
+                        return title
+                    else:
+                        logger.info("Twitch API returned no title, falling back to scraping")
+                else:
+                    logger.info("Twitch API credentials not configured, using scraping")
+            except Exception as e:
+                logger.warning(f"Twitch API failed: {e}, falling back to scraping")
+        
+        # BeautifulSoupでスクレイピング（YouTubeまたはTwitch APIのフォールバック）
         try:
             # YouTube StudioのURLの場合は通常の視聴URLに変換
             if platform == 'youtube' and 'studio.youtube.com/video/' in url:
@@ -622,7 +808,7 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
                         return title.replace(' - YouTube', '').strip()
                 
             elif platform == 'twitch':
-                # Twitchのタイトル取得
+                # Twitchのタイトル取得（スクレイピング）
                 # 方法1: og:titleメタタグから取得
                 og_title = soup.find('meta', property='og:title')
                 if og_title and og_title.get('content'):

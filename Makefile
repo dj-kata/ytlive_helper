@@ -25,6 +25,7 @@ $(target): $(srcs)
 	  --company-name="dj-kata" \
 	  --product-name="ytlive_helper" \
 	  --file-version=$(version) \
+	  --include-module=config_secret \
 	  --enable-plugin=tk-inter --windows-icon-from-ico=icon.ico $(project_name).pyw
 
 dist: 
