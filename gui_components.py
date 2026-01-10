@@ -138,6 +138,8 @@ class GUIComponents:
         self.stream_context_menu.add_command(label=self.strings["stream"]["edit_url"], command=self.edit_stream_url)
         self.stream_context_menu.add_command(label=self.strings["stream"]["update_title"], command=self.update_selected_stream_title)
         self.stream_context_menu.add_separator()
+        self.stream_context_menu.add_command(label=self.strings["context_menu"]["tweet_announcement"], command=self.tweet_stream_announcement)
+        self.stream_context_menu.add_separator()
         self.stream_context_menu.add_command(label=self.strings["stream"]["delete"], command=self.remove_selected_stream)
         
         def on_stream_right_click(event):

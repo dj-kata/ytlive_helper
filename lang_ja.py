@@ -71,6 +71,7 @@ STRINGS = {
         "add_ng_user": "NGユーザに追加",
         "start_receive": "受信開始",
         "stop_receive": "受信停止",
+        "tweet_announcement": "告知をツイート",
     },
     
     # 配信情報タブ

@@ -18,8 +18,7 @@ import socket
 
 # コメント取得ライブラリ
 import pytchat  # YouTube用
-# Twitch用 - シンプルなIRC接続を使用
-import socket
+from chat_downloader import ChatDownloader  # Twitch用（軽量で高速）
 
 from obssocket import OBSSocket
 
@@ -231,7 +230,7 @@ class CommentReceiver:
         self.stop_event.set()
 
 class YouTubeCommentReceiver(CommentReceiver):
-    """YouTubeコメント受信クラス"""
+    """YouTubeコメント受信クラス（pytchat使用）"""
     def __init__(self, settings, callback, global_settings):
         super().__init__(settings)
         self.callback = callback
@@ -242,8 +241,14 @@ class YouTubeCommentReceiver(CommentReceiver):
         """URLからビデオIDを抽出"""
         video_id = None
         
+        # studio.youtube.com/video/VIDEOID/livestreaming 形式（YouTube Studio）
+        if 'studio.youtube.com/video/' in url:
+            # /video/VIDEOID/ の部分を抽出
+            parts = url.split('/video/')
+            if len(parts) > 1:
+                video_id = parts[1].split('/')[0].split('?')[0]
         # youtube.com/watch?v=VIDEOID 形式
-        if 'youtube.com/watch' in url:
+        elif 'youtube.com/watch' in url:
             query = urllib.parse.urlparse(url).query
             params = urllib.parse.parse_qs(query)
             video_id = params.get('v', [None])[0]
@@ -275,11 +280,17 @@ class YouTubeCommentReceiver(CommentReceiver):
             debug_print(f"DEBUG: pytchat.create successful, livechat object created")
             debug_print(f"DEBUG: Starting comment loop")
             
+            message_count = 0
+            
             while not self.stop_event.is_set() and self.livechat.is_alive():
                 try:
-                    debug_print(f"DEBUG: Checking for new comments...")
                     for comment in self.livechat.get().sync_items():
-                        debug_print(f"DEBUG: Received comment from {comment.author.name}: {comment.message}")
+                        if self.stop_event.is_set():
+                            break
+                        
+                        message_count += 1
+                        if message_count % 10 == 0:
+                            debug_print(f"DEBUG: Received {message_count} YouTube comments")
                         
                         # 管理者判定（新形式）
                         is_moderator = False
@@ -297,16 +308,17 @@ class YouTubeCommentReceiver(CommentReceiver):
                             'is_moderator': is_moderator
                         }
                         
-                        debug_print(f"DEBUG: Calling callback with comment_data")
                         self.callback(comment_data)
-                        debug_print(f"DEBUG: Callback completed")
                         
                 except Exception as inner_e:
-                    debug_print(f"DEBUG: Error in chat loop: {inner_e}")
-                    logger.error(f"Error in chat loop: {inner_e}")
+                    debug_print(f"DEBUG: Error in YouTube chat loop: {inner_e}")
+                    logger.error(f"Error in YouTube chat loop: {inner_e}")
                     
                 time.sleep(1)
                 
+        except KeyboardInterrupt:
+            debug_print(f"DEBUG: KeyboardInterrupt detected in YouTube receiver")
+            logger.info(f"YouTube receiver interrupted by user")
         except Exception as e:
             logger.error(f"YouTube comment receiver error: {e}")
             debug_print(f"ERROR: YouTube comment receiver error: {e}")
@@ -318,141 +330,103 @@ class YouTubeCommentReceiver(CommentReceiver):
                 debug_print(f"DEBUG: pytchat terminated")
 
 class TwitchCommentReceiver(CommentReceiver):
-    """Twitchコメント受信クラス（シンプルIRC接続）"""
+    """Twitchコメント受信クラス（chat-downloader使用）"""
     def __init__(self, settings, callback, global_settings):
         super().__init__(settings)
         self.callback = callback
         self.global_settings = global_settings
+        self.chat_downloader = None
         
-    def extract_channel_name(self, url):
-        """URLからチャンネル名を抽出"""
-        if 'twitch.tv/' in url:
-            channel = url.split('/')[-1].lower()
-            # URLパラメータを除去
-            if '?' in channel:
-                channel = channel.split('?')[0]
-            return channel
-        return None
-    
     def start(self):
-        """コメント受信開始（シンプルIRC接続）"""
-        channel = self.extract_channel_name(self.settings.url)
-        if not channel:
-            logger.error(f"Invalid Twitch URL: {self.settings.url}")
-            debug_print(f"ERROR: Invalid Twitch URL: {self.settings.url}")
-            return
-            
-        self.start_with_irc(channel)
-    
-    def start_with_irc(self, channel):
-        """シンプルなIRC接続を使った方法"""
+        """chat-downloaderを使ったコメント受信"""
         try:
-            debug_print(f"DEBUG: Starting IRC connection for Twitch channel: {channel}")
+            debug_print(f"DEBUG: TwitchCommentReceiver.start() called")
+            debug_print(f"DEBUG: URL: {self.settings.url}")
             
-            # Twitch IRCサーバーに接続
-            sock = socket.socket()
-            sock.settimeout(10)  # 接続時は10秒のタイムアウト
-            sock.connect(('irc.chat.twitch.tv', 6667))
+            # chat-downloaderでチャットを取得
+            self.chat_downloader = ChatDownloader()
             
-            # 匿名ログイン（justinfan + タイムスタンプ）
-            anonymous_nick = f"justinfan{int(time.time())}"
-            sock.send(f"PASS SCHMOOPIIE\n".encode('utf-8'))
-            sock.send(f"NICK {anonymous_nick}\n".encode('utf-8'))
+            # タイムアウト設定でチャットを取得
+            chat = self.chat_downloader.get_chat(
+                self.settings.url,
+                timeout=30  # 接続タイムアウト（秒）
+            )
             
-            # チャンネルに参加
-            sock.send(f"JOIN #{channel}\n".encode('utf-8'))
+            debug_print(f"DEBUG: Chat downloader created for Twitch, starting message loop")
             
-            debug_print(f"DEBUG: Connected to Twitch IRC as {anonymous_nick}, joined #{channel}")
+            message_count = 0
+            error_count = 0
+            max_errors = 10  # 連続エラー上限
             
-            buffer = ""  # メッセージのバッファ
-            
-            while not self.stop_event.is_set():
+            for message in chat:
+                # 停止フラグチェック
+                if self.stop_event.is_set():
+                    debug_print(f"DEBUG: Stop event detected, breaking loop")
+                    break
+                
+                # 連続エラーが多すぎる場合は停止
+                if error_count >= max_errors:
+                    debug_print(f"ERROR: Too many consecutive errors ({error_count}), stopping")
+                    break
+                
                 try:
-                    sock.settimeout(1)  # メッセージ受信時は1秒のタイムアウト
-                    data = sock.recv(2048).decode('utf-8', errors='ignore')
+                    # メッセージをパース
+                    author_name = message.get('author', {}).get('name', 'Unknown')
+                    author_id = message.get('author', {}).get('id', author_name)
+                    message_text = message.get('message', '')
+                    timestamp = message.get('time_text', '')
                     
-                    if not data:  # 接続が切れた場合
-                        debug_print("DEBUG: IRC connection lost")
-                        break
+                    message_count += 1
+                    error_count = 0  # 成功したのでエラーカウントをリセット
                     
-                    buffer += data
+                    if message_count % 10 == 0:
+                        debug_print(f"DEBUG: Received {message_count} Twitch messages")
                     
-                    # 改行で分割してメッセージを処理
-                    while '\n' in buffer:
-                        line, buffer = buffer.split('\n', 1)
-                        line = line.strip()
-                        
-                        if not line:
-                            continue
-                            
-                        debug_print(f"DEBUG: Raw IRC line: {line}")
-                        
-                        # PINGに応答
-                        if line.startswith('PING'):
-                            pong_response = line.replace('PING', 'PONG')
-                            sock.send(f"{pong_response}\n".encode('utf-8'))
-                            debug_print(f"DEBUG: Responded to PING")
-                            continue
-                        
-                        # PRIVMSGメッセージを解析
-                        if 'PRIVMSG' in line:
-                            self.parse_privmsg(line)
-                            
-                except socket.timeout:
-                    continue
-                except Exception as e:
-                    debug_print(f"DEBUG: IRC loop error: {e}")
-                    break
+                    # 管理者判定
+                    is_moderator = False
+                    for manager in self.global_settings.managers:
+                        if manager['platform'] == 'twitch' and manager['id'] == author_id:
+                            is_moderator = True
+                            break
                     
-            sock.close()
-            debug_print(f"DEBUG: IRC connection closed")
-            
+                    # モデレーターバッジチェック
+                    if not is_moderator and message.get('author', {}).get('is_moderator', False):
+                        is_moderator = True
+                    
+                    # 統一フォーマットでコールバック
+                    comment_data = {
+                        'platform': 'twitch',
+                        'author': author_name,
+                        'message': message_text,
+                        'timestamp': timestamp,
+                        'author_id': author_id,
+                        'is_moderator': is_moderator
+                    }
+                    
+                    self.callback(comment_data)
+                    
+                except KeyError as ke:
+                    error_count += 1
+                    debug_print(f"DEBUG: Missing key in Twitch message: {ke}")
+                    logger.warning(f"Missing key in message: {ke}")
+                except Exception as inner_e:
+                    error_count += 1
+                    debug_print(f"DEBUG: Error processing Twitch message: {inner_e}")
+                    logger.error(f"Error processing message: {inner_e}")
+                    
+            debug_print(f"DEBUG: Twitch message loop ended, total messages: {message_count}")
+                    
+        except KeyboardInterrupt:
+            debug_print(f"DEBUG: KeyboardInterrupt detected in Twitch receiver")
+            logger.info(f"Twitch receiver interrupted by user")
         except Exception as e:
-            logger.error(f"Twitch IRC receiver error: {e}")
-            debug_print(f"ERROR: Twitch IRC receiver error: {e}")
+            logger.error(f"Twitch comment receiver error: {e}")
+            debug_print(f"ERROR: Twitch receiver error: {e}")
             import traceback
-            debug_print(f"ERROR: IRC Traceback: {traceback.format_exc()}")
-    
-    def parse_privmsg(self, line):
-        """PRIVMSGメッセージを解析"""
-        try:
-            # Twitch IRCの形式: :user!user@user.tmi.twitch.tv PRIVMSG #channel :message
-            parts = line.split(' ', 3)
-            if len(parts) < 4:
-                return
-                
-            user_part = parts[0][1:]  # 最初の `:` を除去
-            user_name = user_part.split('!')[0]
-            message_part = parts[3]
-            
-            if message_part.startswith(':'):
-                message = message_part[1:]  # 最初の `:` を除去
-            else:
-                message = message_part
-                
-            debug_print(f"DEBUG: Parsed Twitch message from {user_name}: {message}")
-            
-            # 管理者判定
-            is_moderator = False
-            for manager in self.global_settings.managers:
-                if manager['platform'] == 'twitch' and manager['id'] == user_name:
-                    is_moderator = True
-                    break
-            
-            comment_data = {
-                'platform': 'twitch',
-                'author': user_name,
-                'message': message,
-                'timestamp': datetime.datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
-                'author_id': user_name,
-                'is_moderator': is_moderator
-            }
-            
-            self.callback(comment_data)
-            
-        except Exception as e:
-            debug_print(f"DEBUG: Error parsing PRIVMSG: {e}")
-            debug_print(f"DEBUG: Line was: {line}")
+            debug_print(f"ERROR: Traceback: {traceback.format_exc()}")
+        finally:
+            debug_print(f"DEBUG: Twitch receiver cleanup")
+
 
 class StreamManager:
     """複数配信を管理するクラス"""
@@ -483,11 +457,12 @@ class StreamManager:
         settings = self.streams[stream_id]
         debug_print(f"DEBUG: Found settings for {stream_id}, platform: {settings.platform}")
         
+        # プラットフォームごとに適切なReceiverを選択
         if settings.platform == 'youtube':
-            debug_print(f"DEBUG: Creating YouTubeCommentReceiver")
+            debug_print(f"DEBUG: Creating YouTubeCommentReceiver (pytchat)")
             receiver = YouTubeCommentReceiver(settings, comment_callback, self.global_settings)
         elif settings.platform == 'twitch':
-            debug_print(f"DEBUG: Creating TwitchCommentReceiver")
+            debug_print(f"DEBUG: Creating TwitchCommentReceiver (chat-downloader)")
             receiver = TwitchCommentReceiver(settings, comment_callback, self.global_settings)
         else:
             logger.error(f"Unknown platform: {settings.platform}")
@@ -506,11 +481,22 @@ class StreamManager:
     def stop_stream(self, stream_id):
         """配信のコメント受信を停止"""
         if stream_id in self.receivers:
+            debug_print(f"DEBUG: Stopping receiver for {stream_id}")
             self.receivers[stream_id].stop()
-            del self.receivers[stream_id]
             
         if stream_id in self.threads:
+            thread = self.threads[stream_id]
+            # スレッドが終了するまで最大3秒待機
+            debug_print(f"DEBUG: Waiting for thread to stop for {stream_id}")
+            thread.join(timeout=3)
+            if thread.is_alive():
+                debug_print(f"WARNING: Thread for {stream_id} did not stop cleanly")
+            else:
+                debug_print(f"DEBUG: Thread stopped successfully for {stream_id}")
             del self.threads[stream_id]
+            
+        if stream_id in self.receivers:
+            del self.receivers[stream_id]
             
         if stream_id in self.streams:
             self.streams[stream_id].is_active = False
@@ -599,6 +585,15 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             str: 配信タイトル（取得できない場合は空文字列）
         """
         try:
+            # YouTube StudioのURLの場合は通常の視聴URLに変換
+            if platform == 'youtube' and 'studio.youtube.com/video/' in url:
+                # video_idを抽出
+                parts = url.split('/video/')
+                if len(parts) > 1:
+                    video_id = parts[1].split('/')[0].split('?')[0]
+                    # 通常の視聴URLに変換
+                    url = f'https://www.youtube.com/watch?v={video_id}'
+            
             # User-Agentヘッダーを設定（ブロック回避）
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -738,6 +733,42 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         
         # タイトル更新
         self.update_stream_title(stream_id)
+    
+    def tweet_stream_announcement(self):
+        """選択された配信の告知をツイート"""
+        selection = self.stream_tree.selection()
+        if not selection:
+            messagebox.showwarning(self.strings["messages"]["warning"], self.strings["messages"]["select_stream"])
+            return
+        
+        item = self.stream_tree.item(selection[0])
+        stream_id = item['values'][0]
+        
+        # 配信設定を取得
+        settings = self.stream_manager.streams.get(stream_id)
+        if not settings:
+            return
+        
+        # ツイート内容を作成
+        # 1行目: タイトル
+        # 2行目: URL
+        # 3行目: 空行（コメント入力用）
+        title = settings.title if settings.title else "配信"
+        url = settings.url
+        
+        # ツイート内容（改行コードは\n）
+        tweet_text = f"{title}\n{url}\n"
+        
+        # URLエンコード
+        import urllib.parse
+        encoded_text = urllib.parse.quote(tweet_text)
+        
+        # TwitterのツイートURL
+        twitter_url = f"https://twitter.com/intent/tweet?text={encoded_text}"
+        
+        # ブラウザで開く
+        webbrowser.open(twitter_url)
+        logger.info(f"Opening tweet window for stream: {stream_id}")
     
     def setup_obs(self):
         """OBS接続設定"""
@@ -1068,8 +1099,17 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
     
     def run(self):
         """アプリケーションを実行"""
-        self.root.mainloop()
+        try:
+            self.root.mainloop()
+        except KeyboardInterrupt:
+            logger.info("Application interrupted by user")
+            self.on_closing()
 
 if __name__ == '__main__':
-    app = MultiStreamCommentHelper()
-    app.run()
+    try:
+        app = MultiStreamCommentHelper()
+        app.run()
+    except KeyboardInterrupt:
+        print("Application interrupted by user")
+        import sys
+        sys.exit(0)

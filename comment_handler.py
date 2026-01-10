@@ -150,12 +150,73 @@ class CommentHandler:
                 self.strings["messages"]["ng_user_added"].format(author=author)
             )
     
+    def parse_request_numbers(self, text):
+        """リクエスト番号のテキストをパースして番号リストを返す
+        
+        例:
+            "1-3" → [1, 2, 3]
+            "1 3-4" → [1, 3, 4]
+            "1,2,3" → [1, 2, 3]
+            "1, 3-5, 7" → [1, 3, 4, 5, 7]
+        
+        Args:
+            text (str): 番号を含むテキスト
+            
+        Returns:
+            list[int]: 番号のリスト（重複なし、ソート済み）
+        """
+        import re
+        
+        numbers = []
+        
+        # カンマとスペースで分割
+        parts = re.split(r'[,\s]+', text.strip())
+        
+        for part in parts:
+            if not part:
+                continue
+            
+            # 範囲指定（例: "1-3"）
+            if '-' in part:
+                try:
+                    start, end = part.split('-', 1)
+                    start_num = int(start.strip())
+                    end_num = int(end.strip())
+                    
+                    # 範囲を展開
+                    for num in range(start_num, end_num + 1):
+                        if num not in numbers:
+                            numbers.append(num)
+                except ValueError:
+                    logger.warning(f"Invalid range format: {part}")
+                    continue
+            else:
+                # 単一の数字
+                try:
+                    num = int(part.strip())
+                    if num not in numbers:
+                        numbers.append(num)
+                except ValueError:
+                    logger.warning(f"Invalid number format: {part}")
+                    continue
+        
+        # ソートして返す
+        return sorted(numbers)
+    
     def process_request_commands(self, stream_id, comment_data):
         """コメントからリクエスト追加/削除コマンドを処理"""
         message = comment_data['message']
         author = comment_data['author']
         platform = comment_data['platform']
         author_id = comment_data.get('author_id', '')
+        
+        # 常に出力されるINFOレベルのログ
+        logger.info(f"Processing command: '{message}' from {author}")
+        
+        logger.debug(f"DEBUG: process_request_commands called")
+        logger.debug(f"DEBUG:   message: {message}")
+        logger.debug(f"DEBUG:   author: {author} (id: {author_id})")
+        logger.debug(f"DEBUG:   platform: {platform}")
         
         # 管理者チェック（新形式）
         is_manager = False
@@ -164,9 +225,17 @@ class CommentHandler:
                 is_manager = True
                 break
         
+        logger.debug(f"DEBUG:   is_manager: {is_manager}")
+        logger.debug(f"DEBUG:   pushwords: {self.global_settings.pushwords}")
+        logger.debug(f"DEBUG:   pullwords: {self.global_settings.pullwords}")
+        logger.debug(f"DEBUG:   push_manager_only: {self.global_settings.push_manager_only}")
+        logger.debug(f"DEBUG:   pull_manager_only: {self.global_settings.pull_manager_only}")
+        
         # プッシュワードチェック
         for pushword in self.global_settings.pushwords:
             if message.startswith(pushword):
+                logger.debug(f"DEBUG: Pushword matched: '{pushword}'")
+                logger.info(f"Pushword matched: '{pushword}'")
                 # 権限チェック
                 if self.global_settings.push_manager_only and not is_manager:
                     logger.info(f"Request add denied: {author} is not a manager")
@@ -197,28 +266,116 @@ class CommentHandler:
         
         # プルワードチェック
         for pullword in self.global_settings.pullwords:
+            logger.debug(f"DEBUG: Checking pullword: '{pullword}' in '{message}'")
             if pullword in message:
+                logger.debug(f"DEBUG: Pullword matched: '{pullword}'")
+                logger.info(f"Pullword matched: '{pullword}' in message: '{message}'")
+                
                 # 権限チェック
                 if self.global_settings.pull_manager_only and not is_manager:
                     logger.info(f"Request remove denied: {author} is not a manager")
+                    logger.debug(f"DEBUG: Permission denied, continuing to next pullword")
                     continue
                 
-                # リクエスト内容を抽出
-                request_content = message.replace(pullword, '').strip()
-                if request_content:
-                    # マッチするリクエストを削除
-                    for req in self.common_requests[:]:
-                        if req['content'] == request_content:
-                            self.common_requests.remove(req)
-                            
-                            # 配信タブのリクエスト処理数を更新
-                            settings = self.stream_manager.streams.get(stream_id)
-                            if settings and hasattr(settings, 'request_count_label'):
-                                settings.processed_requests += 1
-                                settings.request_count_label.config(text=str(settings.processed_requests))
-                            
-                            self.update_request_display()
-                            self.generate_xml()
-                            logger.info(f"Request removed: {request_content} by {author}")
-                            break
+                logger.debug(f"DEBUG: Permission OK, processing removal")
+                logger.info(f"Permission OK, processing removal for: '{message}'")
+                
+                # プルワード以降の部分を取得
+                remaining_text = message.split(pullword, 1)[1].strip()
+                logger.debug(f"DEBUG: Remaining text after pullword: '{remaining_text}'")
+                logger.info(f"Remaining text after pullword: '{remaining_text}'")
+                
+                # 番号指定パターンをチェック
+                import re
+                
+                # パターン判定
+                if not remaining_text:
+                    # 番号なし → デフォルトで1番を削除
+                    logger.info(f"No number specified, defaulting to #1")
+                    numbers = [1]
+                    is_number_deletion = True
+                elif re.match(r'^[\d\s,\-]+$', remaining_text):
+                    # 数字のみ → 番号指定削除
+                    logger.info(f"Number-based deletion detected for: '{remaining_text}'")
+                    numbers = self.parse_request_numbers(remaining_text)
+                    is_number_deletion = True
+                else:
+                    # 文字を含む → 内容一致削除
+                    logger.info(f"Content-based deletion for: '{remaining_text}'")
+                    numbers = None
+                    is_number_deletion = False
+                
+                # 番号指定削除の処理
+                if is_number_deletion and numbers:
+                    logger.debug(f"DEBUG: Pattern matched as number-based deletion")
+                    logger.debug(f"DEBUG: Parsed numbers: {numbers}")
+                    logger.info(f"Parsed numbers: {numbers}")
+                    
+                    removed_count = 0
+                    removed_items = []
+                    
+                    logger.info(f"Current request count: {len(self.common_requests)}")
+                    
+                    # リクエストリストは1始まり
+                    for num in numbers:
+                        index = num - 1  # 0ベースのインデックスに変換
+                        if 0 <= index < len(self.common_requests):
+                            removed_item = self.common_requests[index]
+                            removed_items.append((index, removed_item))
+                    
+                    logger.debug(f"DEBUG: Items to remove: {len(removed_items)}")
+                    logger.info(f"Items to remove: {len(removed_items)}")
+                    
+                    # 逆順で削除（インデックスのズレを防ぐ）
+                    for index, item in sorted(removed_items, reverse=True):
+                        self.common_requests.pop(index)
+                        removed_count += 1
+                        logger.info(f"Request #{index+1} removed: {item['content']} by {author}")
+                    
+                    if removed_count > 0:
+                        # 配信タブのリクエスト処理数を更新
+                        settings = self.stream_manager.streams.get(stream_id)
+                        if settings and hasattr(settings, 'request_count_label'):
+                            settings.processed_requests += removed_count
+                            settings.request_count_label.config(text=str(settings.processed_requests))
+                        
+                        self.update_request_display()
+                        self.generate_xml()
+                        logger.info(f"Removed {removed_count} requests by numbers: {numbers}")
+                    else:
+                        logger.info(f"No requests removed - numbers may be out of range")
+                
+                # 内容一致削除の処理
+                elif not is_number_deletion:
+                    logger.debug(f"DEBUG: Pattern matched as content-based deletion")
+                    # 従来の内容一致での削除
+                    request_content = remaining_text
+                    logger.debug(f"DEBUG: Looking for request with content: '{request_content}'")
+                    
+                    if request_content:
+                        # マッチするリクエストを削除
+                        found = False
+                        logger.info(f"Searching in {len(self.common_requests)} requests")
+                        for req in self.common_requests[:]:
+                            logger.debug(f"DEBUG: Comparing '{req['content']}' with '{request_content}'")
+                            if req['content'] == request_content:
+                                logger.debug(f"DEBUG: Match found, removing request")
+                                logger.info(f"Match found! Removing request: '{request_content}'")
+                                self.common_requests.remove(req)
+                                found = True
+                                
+                                # 配信タブのリクエスト処理数を更新
+                                settings = self.stream_manager.streams.get(stream_id)
+                                if settings and hasattr(settings, 'request_count_label'):
+                                    settings.processed_requests += 1
+                                    settings.request_count_label.config(text=str(settings.processed_requests))
+                                
+                                self.update_request_display()
+                                self.generate_xml()
+                                logger.info(f"Request removed: {request_content} by {author}")
+                                break
+                        
+                        if not found:
+                            logger.debug(f"DEBUG: No matching request found for content: '{request_content}'")
+                            logger.info(f"No matching request found for content: '{request_content}'")
                 break

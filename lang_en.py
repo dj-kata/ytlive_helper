@@ -71,6 +71,7 @@ STRINGS = {
         "add_ng_user": "Add to NG Users",
         "start_receive": "Start Receiving",
         "stop_receive": "Stop Receiving",
+        "tweet_announcement": "Tweet Announcement",
     },
     
     # Stream info tab
