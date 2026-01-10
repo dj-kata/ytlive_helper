@@ -97,10 +97,11 @@ def debug_print(*args, **kwargs):
 
 class StreamSettings:
     """各配信の設定を管理するクラス"""
-    def __init__(self, stream_id="", platform="youtube", url=""):
+    def __init__(self, stream_id="", platform="youtube", url="", title=""):
         self.stream_id = stream_id
         self.platform = platform  # "youtube" or "twitch"
         self.url = url
+        self.title = title  # 配信タイトル
         self.comments = []
         self.is_active = False
 
@@ -128,8 +129,11 @@ class GlobalSettings:
         self.push_manager_only = False
         self.pull_manager_only = False
         
-        # 共通管理者リスト
+        # 共通管理者リスト（新形式：辞書のリスト）
         self.managers = []
+
+        # 共通NGリスト（新形式：辞書のリスト）
+        self.ng_users = []
         
     def save(self, filename='global_settings.json'):
         with open(filename, 'w', encoding='utf-8') as f:
@@ -141,6 +145,43 @@ class GlobalSettings:
                 data = json.load(f)
                 for key, value in data.items():
                     setattr(self, key, value)
+
+                # 旧形式のリストを新形式に変換
+                self._convert_old_format()
+
+    def _convert_old_format(self):
+        """旧形式のリストを新形式に変換"""
+        # 管理者リストの変換
+        if self.managers and len(self.managers) > 0:
+            if isinstance(self.managers[0], str):
+                new_managers = []
+                for manager in self.managers:
+                    if '(' in manager and ')' in manager:
+                        name = manager.split('(')[0]
+                        user_id = manager.split('(')[1][:-1]
+                        if user_id.startswith('UC'):
+                            new_managers.append({
+                                "platform": "youtube",
+                                "id": user_id,
+                                "name": name
+                            })
+                        else:
+                            new_managers.append({
+                                "platform": "twitch",
+                                "id": manager,
+                                "name": name
+                            })
+                    else:
+                        new_managers.append({
+                            "platform": "twitch",
+                            "id": manager,
+                            "name": manager
+                        })
+                self.managers = new_managers
+        
+        # NGユーザリストが初期化されていない場合
+        if not hasattr(self, 'ng_users'):
+            self.ng_users = []
 
 class CommentReceiver:
     """コメント受信の基底クラス"""
@@ -206,20 +247,19 @@ class YouTubeCommentReceiver(CommentReceiver):
                         debug_print(f"DEBUG: Processing comment from {comment.author.name}: {comment.message}")
                         
                         # 管理者ID確認のためのデバッグ
-                        manager_ids = []
-                        for m in self.global_settings.managers:
-                            if '(' in m and ')' in m:
-                                manager_ids.append(m.split('(')[1][:-1])
-                            else:
-                                manager_ids.append(m)
-                        
+                        is_moderator = False
+                        for manager in self.global_settings.managers:
+                            if manager['platform'] == 'youtube' and manager['id'] == comment.author.channelId:
+                                is_moderator = True
+                                break
+                            
                         comment_data = {
                             'platform': 'youtube',
                             'author': comment.author.name,
                             'message': comment.message,
                             'timestamp': comment.datetime,
                             'author_id': comment.author.channelId,
-                            'is_moderator': comment.author.channelId in manager_ids or comment.author.name in manager_ids
+                            'is_moderator': is_moderator
                         }
                         
                         debug_print(f"DEBUG: Calling callback with comment_data")
@@ -358,13 +398,17 @@ class TwitchCommentReceiver(CommentReceiver):
             debug_print(f"DEBUG: Parsed Twitch message from {user_name}: {message}")
             
             # 管理者判定
-            is_moderator = user_name in self.global_settings.managers
+            is_moderator = False
+            for manager in self.global_settings.managers:
+                if manager['platform'] == 'twitch' and manager['id'] == user_name:
+                    is_moderator = True
+                    break
             
             comment_data = {
                 'platform': 'twitch',
                 'author': user_name,
                 'message': message,
-                'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'timestamp': datetime.datetime.now().strftime('%Y/%m/%d %H:%M:%S'),
                 'author_id': user_name,
                 'is_moderator': is_moderator
             }
@@ -463,10 +507,15 @@ class MultiStreamCommentHelper:
             platform = self.detect_platform(url)
             if platform:
                 stream_id = f"{platform}_{len(self.stream_manager.streams) + 1}"
+                
+                # タイトルを取得
+                title = self.get_stream_title(platform, url)
+                
                 stream_settings = StreamSettings(
                     stream_id=stream_id,
                     platform=platform,
-                    url=url
+                    url=url,
+                    title=title
                 )
                 self.stream_manager.add_stream(stream_settings)
                 self.add_stream_tab(stream_settings)
@@ -483,6 +532,54 @@ class MultiStreamCommentHelper:
             return 'twitch'
         else:
             return None
+    
+    def get_stream_title(self, platform, url):
+        """配信タイトルを取得（スケルトン関数 - 実装が必要）
+        
+        Args:
+            platform (str): プラットフォーム名 ('youtube' or 'twitch')
+            url (str): 配信URL
+            
+        Returns:
+            str: 配信タイトル。取得できない場合は空文字列
+        """
+        # TODO: ここに実装を追加
+        # YouTubeの場合の実装例:
+        # if platform == 'youtube':
+        #     video_id = extract_video_id(url)
+        #     # YouTube Data API等を使ってタイトルを取得
+        #     return title
+        # 
+        # Twitchの場合の実装例:
+        # elif platform == 'twitch':
+        #     channel = extract_channel_name(url)
+        #     # Twitch API等を使ってタイトルを取得
+        #     return title
+        
+        return ""  # 実装するまでは空文字列を返す
+    
+    def update_stream_title(self, stream_id):
+        """指定された配信のタイトルを更新（オプション）
+        
+        タイトル取得関数を実装後、必要に応じてこのメソッドを呼び出して
+        タイトルを再取得・更新できます。
+        
+        Args:
+            stream_id (str): 配信ID
+        """
+        if stream_id in self.stream_manager.streams:
+            settings = self.stream_manager.streams[stream_id]
+            new_title = self.get_stream_title(settings.platform, settings.url)
+            
+            if new_title:
+                settings.title = new_title
+                
+                # タイトルラベルが存在すれば更新
+                if hasattr(settings, 'title_label'):
+                    settings.title_label.config(text=new_title)
+                
+                # リストも更新
+                self.update_stream_list()
         
     def setup_gui(self):
         """GUI構築"""
@@ -519,45 +616,106 @@ class MultiStreamCommentHelper:
         platform_label.pack(side=tk.LEFT, padx=(10, 0))
         
         # 配信リスト
-        list_frame = ttk.Frame(stream_frame)
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        stream_list_frame = ttk.Frame(stream_frame)
+        stream_list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         
-        # Treeview for stream list
-        columns = ('ID', 'Platform', 'URL', 'Status')
-        self.stream_tree = ttk.Treeview(list_frame, columns=columns, show='headings', height=6)
+        # Treeview for stream list - 列名を左揃えに、カラム幅固定
+        columns = ('ID', 'Platform', 'タイトル', 'URL', 'Status')
+        self.stream_tree = ttk.Treeview(stream_list_frame, columns=columns, show='headings', height=6)
         
+        # カラム幅を固定（stretch=Falseで自動リサイズを無効化）
+        column_widths = {'ID': 120, 'Platform': 80, 'タイトル': 250, 'URL': 300, 'Status': 100}
         for col in columns:
-            self.stream_tree.heading(col, text=col)
-            self.stream_tree.column(col, width=150)
-            
-        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.stream_tree.yview)
-        self.stream_tree.configure(yscrollcommand=scrollbar.set)
+            self.stream_tree.heading(col, text=col, anchor='w')  # 列名を左揃えに
+            self.stream_tree.column(col, width=column_widths[col], stretch=False)
         
-        self.stream_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        # 縦スクロールバー
+        scrollbar_y = ttk.Scrollbar(stream_list_frame, orient=tk.VERTICAL, command=self.stream_tree.yview)
+        # 横スクロールバー
+        scrollbar_x = ttk.Scrollbar(stream_list_frame, orient=tk.HORIZONTAL, command=self.stream_tree.xview)
         
-        # 配信操作ボタン
-        button_frame = ttk.Frame(stream_frame)
-        button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        self.stream_tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
         
-        ttk.Button(button_frame, text="開始", command=self.start_selected_stream).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="停止", command=self.stop_selected_stream).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="削除", command=self.remove_selected_stream).pack(side=tk.LEFT, padx=(0, 5))
+        # グリッドレイアウトで配置
+        self.stream_tree.grid(row=0, column=0, sticky='nsew')
+        scrollbar_y.grid(row=0, column=1, sticky='ns')
+        scrollbar_x.grid(row=1, column=0, sticky='ew')
+        
+        # グリッド設定
+        stream_list_frame.grid_rowconfigure(0, weight=1)
+        stream_list_frame.grid_columnconfigure(0, weight=1)
+        
+        # 配信リスト用の右クリックメニュー
+        self.stream_context_menu = tk.Menu(self.root, tearoff=0)
+        self.stream_context_menu.add_command(label="受信開始", command=self.start_selected_stream)
+        self.stream_context_menu.add_command(label="受信停止", command=self.stop_selected_stream)
+        self.stream_context_menu.add_separator()
+        self.stream_context_menu.add_command(label="削除", command=self.remove_selected_stream)
+        
+        def on_stream_right_click(event):
+            # 選択されたアイテムがあるかチェック
+            item = self.stream_tree.identify_row(event.y)
+            if item:
+                self.stream_tree.selection_set(item)
+                self.stream_context_menu.post(event.x_root, event.y_root)
+        
+        def on_stream_double_click(event):
+            # ダブルクリックで受信のON/OFF切り替え
+            item = self.stream_tree.identify_row(event.y)
+            if item:
+                self.stream_tree.selection_set(item)
+                # 現在のステータスを確認
+                values = self.stream_tree.item(item)['values']
+                stream_id = values[0]
+                settings = self.stream_manager.streams.get(stream_id)
+                if settings:
+                    if settings.is_active:
+                        self.stop_selected_stream()
+                    else:
+                        self.start_selected_stream()
+        
+        self.stream_tree.bind("<Button-3>", on_stream_right_click)  # 右クリック
+        self.stream_tree.bind("<Double-Button-1>", on_stream_double_click)  # ダブルクリック
+        
+        # 操作説明
+        help_label = ttk.Label(stream_frame, 
+                              text="※ダブルクリックで受信ON/OFF切り替え、右クリックでメニュー表示", 
+                              foreground="gray")
+        help_label.pack(padx=10, pady=(5, 10))
         
         # 共通リクエスト管理エリア
         request_frame = ttk.LabelFrame(main_frame, text="リクエスト一覧（全配信）")
         request_frame.pack(fill=tk.X, pady=(10, 0))
         
-        # リクエストリストボックス
-        list_frame = ttk.Frame(request_frame)
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # リクエストリストTreeview
+        request_list_frame = ttk.Frame(request_frame)
+        request_list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        self.request_listbox = tk.Listbox(list_frame, height=8)
-        self.request_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # Treeview作成
+        request_columns = ('番号', 'リクエスト内容', 'ユーザー', 'プラットフォーム')
+        self.request_tree = ttk.Treeview(request_list_frame, columns=request_columns, show='headings', height=8)
         
-        req_scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.request_listbox.yview)
-        self.request_listbox.configure(yscrollcommand=req_scrollbar.set)
-        req_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        # カラム幅を固定
+        column_widths = {'番号': 60, 'リクエスト内容': 350, 'ユーザー': 120, 'プラットフォーム': 100}
+        for col in request_columns:
+            self.request_tree.heading(col, text=col, anchor='w')
+            self.request_tree.column(col, width=column_widths[col], stretch=False)
+        
+        # 縦スクロールバー
+        req_scrollbar_y = ttk.Scrollbar(request_list_frame, orient=tk.VERTICAL, command=self.request_tree.yview)
+        # 横スクロールバー
+        req_scrollbar_x = ttk.Scrollbar(request_list_frame, orient=tk.HORIZONTAL, command=self.request_tree.xview)
+        
+        self.request_tree.configure(yscrollcommand=req_scrollbar_y.set, xscrollcommand=req_scrollbar_x.set)
+        
+        # グリッドレイアウトで配置
+        self.request_tree.grid(row=0, column=0, sticky='nsew')
+        req_scrollbar_y.grid(row=0, column=1, sticky='ns')
+        req_scrollbar_x.grid(row=1, column=0, sticky='ew')
+        
+        # グリッド設定
+        request_list_frame.grid_rowconfigure(0, weight=1)
+        request_list_frame.grid_columnconfigure(0, weight=1)
         
         # リクエスト操作ボタン
         req_button_frame = ttk.Frame(request_frame)
@@ -578,25 +736,27 @@ class MultiStreamCommentHelper:
         comment_frame = ttk.LabelFrame(main_frame, text="コメント一覧（全配信）")
         comment_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
         
-        # コメントTreeview
-        comment_columns = ('時刻', 'ユーザー', 'コメント', '配信ID', 'プラットフォーム')
+        # コメントTreeview - 横スクロールも追加、カラム幅固定
+        comment_columns = ('日時', 'ユーザー', 'コメント', '配信ID', 'プラットフォーム')
         self.comment_tree = ttk.Treeview(comment_frame, columns=comment_columns, show='headings', height=12)
         
+        # カラム幅を固定（stretch=Falseで自動リサイズを無効化）
+        column_widths = {'日時': 140, 'ユーザー': 120, 'コメント': 400, '配信ID': 120, 'プラットフォーム': 100}
         for col in comment_columns:
-            self.comment_tree.heading(col, text=col)
-            if col == 'コメント':
-                self.comment_tree.column(col, width=300)
-            elif col == '配信ID':
-                self.comment_tree.column(col, width=120)
-            else:
-                self.comment_tree.column(col, width=100)
-                
-        comment_scrollbar = ttk.Scrollbar(comment_frame, orient=tk.VERTICAL, command=self.comment_tree.yview)
-        self.comment_tree.configure(yscrollcommand=comment_scrollbar.set)
+            self.comment_tree.heading(col, text=col, anchor='w')  # 列名を左揃えに
+            self.comment_tree.column(col, width=column_widths[col], stretch=False)
+        
+        # 縦スクロールバー
+        comment_scrollbar_y = ttk.Scrollbar(comment_frame, orient=tk.VERTICAL, command=self.comment_tree.yview)
+        # 横スクロールバー
+        comment_scrollbar_x = ttk.Scrollbar(comment_frame, orient=tk.HORIZONTAL, command=self.comment_tree.xview)
+        
+        self.comment_tree.configure(yscrollcommand=comment_scrollbar_y.set, xscrollcommand=comment_scrollbar_x.set)
         
         # 右クリックメニュー
         self.comment_context_menu = tk.Menu(self.root, tearoff=0)
         self.comment_context_menu.add_command(label="管理者IDに追加", command=self.add_manager_from_comment)
+        self.comment_context_menu.add_command(label="NGユーザに追加", command=self.add_ng_user_from_comment)
         
         def on_comment_right_click(event):
             # 選択されたアイテムがあるかチェック
@@ -607,12 +767,18 @@ class MultiStreamCommentHelper:
         
         self.comment_tree.bind("<Button-3>", on_comment_right_click)  # 右クリック
         
-        self.comment_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
-        comment_scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=10)
+        # Treeviewとスクロールバーを配置
+        self.comment_tree.grid(row=0, column=0, sticky='nsew', padx=(10, 0), pady=10)
+        comment_scrollbar_y.grid(row=0, column=1, sticky='ns', pady=10)
+        comment_scrollbar_x.grid(row=1, column=0, sticky='ew', padx=(10, 0))
+        
+        # グリッド設定
+        comment_frame.grid_rowconfigure(0, weight=1)
+        comment_frame.grid_columnconfigure(0, weight=1)
         
         # コメント操作ボタン
         comment_button_frame = ttk.Frame(comment_frame)
-        comment_button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        comment_button_frame.grid(row=2, column=0, columnspan=2, sticky='ew', padx=10, pady=(0, 10))
         
         ttk.Button(comment_button_frame, text="クリア", command=self.clear_all_comments).pack(side=tk.LEFT)
         
@@ -663,11 +829,16 @@ class MultiStreamCommentHelper:
         stream_id = f"{platform}_{len(self.stream_manager.streams) + 1}"
         debug_print(f"DEBUG: Generated stream_id: {stream_id}")
         
+        # タイトルを取得
+        title = self.get_stream_title(platform, url)
+        debug_print(f"DEBUG: Retrieved title: {title}")
+        
         # 新しい配信設定を作成
         stream_settings = StreamSettings(
             stream_id=stream_id,
             platform=platform,
-            url=url
+            url=url,
+            title=title
         )
         debug_print(f"DEBUG: Created StreamSettings")
         
@@ -695,9 +866,11 @@ class MultiStreamCommentHelper:
             
         # 新しい項目を追加
         for stream_id, settings in self.stream_manager.streams.items():
-            status = "実行中" if settings.is_active else "停止中"
+            status = "● 受信中" if settings.is_active else "○ 停止中"
+            # タイトルが長い場合は省略表示
+            display_title = settings.title[:40] + "..." if len(settings.title) > 40 else settings.title
             self.stream_tree.insert('', tk.END, values=(
-                stream_id, settings.platform, settings.url[:50], status
+                stream_id, settings.platform, display_title, settings.url[:50], status
             ))
             
     def add_stream_tab(self, stream_settings):
@@ -709,6 +882,14 @@ class MultiStreamCommentHelper:
         # 配信情報表示
         info_frame = ttk.LabelFrame(tab_frame, text="配信情報")
         info_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        # タイトル表示
+        title_info_frame = ttk.Frame(info_frame)
+        title_info_frame.pack(fill=tk.X, padx=10, pady=5)
+        ttk.Label(title_info_frame, text="タイトル:").pack(side=tk.LEFT)
+        title_label = ttk.Label(title_info_frame, text=stream_settings.title if stream_settings.title else "(取得中...)", 
+                               foreground="blue", wraplength=500)
+        title_label.pack(side=tk.LEFT, padx=(5, 0))
         
         # URL表示
         url_info_frame = ttk.Frame(info_frame)
@@ -749,6 +930,7 @@ class MultiStreamCommentHelper:
         request_count_label.pack(side=tk.LEFT, padx=(5, 0))
         
         # 各要素をstream_settingsに関連付け
+        stream_settings.title_label = title_label
         stream_settings.status_label = status_label
         stream_settings.comment_count_label = comment_count_label
         stream_settings.request_count_label = request_count_label
@@ -780,7 +962,7 @@ class MultiStreamCommentHelper:
             settings = self.stream_manager.streams[stream_id]
             if hasattr(settings, 'status_label'):
                 settings.status_label.config(text="実行中", foreground="green")
-            messagebox.showinfo("成功", f"配信 {stream_id} を開始しました")
+            # 受信開始時のダイアログを削除（メッセージを表示しない）
         else:
             print(f"DEBUG: start_stream returned False")
             messagebox.showerror("エラー", f"配信 {stream_id} の開始に失敗しました")
@@ -801,7 +983,6 @@ class MultiStreamCommentHelper:
         settings = self.stream_manager.streams[stream_id]
         if hasattr(settings, 'status_label'):
             settings.status_label.config(text="停止中", foreground="red")
-        messagebox.showinfo("成功", f"配信 {stream_id} を停止しました")
         
     def remove_selected_stream(self):
         """選択された配信を削除"""
@@ -838,11 +1019,18 @@ class MultiStreamCommentHelper:
         
     def process_comment(self, stream_id, comment_data):
         """コメントを処理"""
-        print(f"DEBUG: process_comment called for stream_id: {stream_id}")
-        print(f"DEBUG: comment_data: {comment_data}")
+        debug_print(f"DEBUG: process_comment called for stream_id: {stream_id}")
+        debug_print(f"DEBUG: comment_data: {comment_data}")
         
+        # NGユーザチェック
+        for ng_user in self.global_settings.ng_users:
+            if (ng_user['platform'] == comment_data['platform'] and 
+                ng_user['id'] == comment_data['author_id']):
+                debug_print(f"DEBUG: Filtered NG user comment from {comment_data['author']}")
+                return
+
         if stream_id not in self.stream_manager.streams:
-            print(f"ERROR: stream_id {stream_id} not found in streams")
+            debug_print(f"ERROR: stream_id {stream_id} not found in streams")
             return
             
         settings = self.stream_manager.streams[stream_id]
@@ -874,14 +1062,11 @@ class MultiStreamCommentHelper:
             # timestampが文字列かdatetimeオブジェクトかを判定
             timestamp_value = comment_data['timestamp']
             if isinstance(timestamp_value, str):
-                # 既に文字列の場合、時刻部分のみを抽出
-                if ' ' in timestamp_value:
-                    timestamp = timestamp_value.split(' ')[1]  # '2025-07-17 23:48:06' -> '23:48:06'
-                else:
-                    timestamp = timestamp_value
+                # 既に文字列の場合、そのまま使用（YYYY/MM/DD HH:MM:SS形式を想定）
+                timestamp = timestamp_value
             else:
-                # datetimeオブジェクトの場合
-                timestamp = timestamp_value.strftime('%H:%M:%S')
+                # datetimeオブジェクトの場合、日付と時刻を含む形式に変換
+                timestamp = timestamp_value.strftime('%Y/%m/%d %H:%M:%S')
             
             debug_print(f"DEBUG: Formatted timestamp: {timestamp}")
             
@@ -895,7 +1080,7 @@ class MultiStreamCommentHelper:
             debug_print(f"DEBUG: Inserting values: {values}")
             
             # コメントデータをタグとして保存（右クリック用）
-            item_id = self.comment_tree.insert('', tk.END, values=values, tags=(comment_data['author_id'],))
+            item_id = self.comment_tree.insert('', tk.END, values=values, tags=(comment_data['author_id'], comment_data['platform']))
             
             debug_print(f"DEBUG: Successfully inserted into comment_tree")
             
@@ -927,26 +1112,59 @@ class MultiStreamCommentHelper:
         values = self.comment_tree.item(item_id)['values']
         tags = self.comment_tree.item(item_id)['tags']
         
-        if len(values) >= 2:
+        if len(values) >= 2 and len(tags) >= 2:
             author = values[1]  # ユーザー名
-            platform = values[4]  # プラットフォーム
+            platform = tags[1]  # プラットフォーム
+            author_id = tags[0]  # ユーザーID
             
-            # プラットフォームに応じた管理者ID形式を作成
-            if platform == 'youtube' and tags:
-                # YouTubeの場合、タグからauthor_idを取得
-                author_id = tags[0]
-                manager_entry = f"{author}({author_id})"
-            else:
-                # Twitchの場合
-                manager_entry = author
+            # 新形式で管理者エントリを作成
+            manager_entry = {
+                "platform": platform,
+                "id": author_id,
+                "name": author
+            }
             
-            if manager_entry not in self.global_settings.managers:
-                self.global_settings.managers.append(manager_entry)
-                self.global_settings.save()
-                messagebox.showinfo("管理者追加", f"{author}を管理者に追加しました。")
-            else:
-                messagebox.showinfo("管理者追加", f"{author}は既に管理者に登録されています。")
+            # 重複チェック
+            for manager in self.global_settings.managers:
+                if manager['platform'] == platform and manager['id'] == author_id:
+                    messagebox.showinfo("管理者追加", f"{author}は既に管理者に登録されています。")
+                    return
             
+            self.global_settings.managers.append(manager_entry)
+            self.global_settings.save()
+            messagebox.showinfo("管理者追加", f"{author}を管理者に追加しました。")
+
+    def add_ng_user_from_comment(self):
+        """選択されたコメントのユーザーをNGユーザに追加"""
+        selection = self.comment_tree.selection()
+        if not selection:
+            return
+
+        item_id = selection[0]
+        values = self.comment_tree.item(item_id)['values']
+        tags = self.comment_tree.item(item_id)['tags']
+
+        if len(values) >= 2 and len(tags) >= 2:
+            author = values[1]
+            platform = tags[1]
+            author_id = tags[0]
+
+            ng_entry = {
+                "platform": platform,
+                "id": author_id,
+                "name": author
+            }
+
+            # 重複チェック
+            for ng in self.global_settings.ng_users:
+                if ng['platform'] == platform and ng['id'] == author_id:
+                    messagebox.showinfo("NGユーザ追加", f"{author}は既にNGユーザに登録されています。")
+                    return
+
+            self.global_settings.ng_users.append(ng_entry)
+            self.global_settings.save()
+            messagebox.showinfo("NGユーザ追加", f"{author}をNGユーザに追加しました。")
+
     def process_request_commands(self, stream_id, comment_data):
         """リクエストコマンドを処理"""
         settings = self.stream_manager.streams[stream_id]
@@ -962,8 +1180,14 @@ class MultiStreamCommentHelper:
             for pushword in global_settings.pushwords:
                 if message.startswith(pushword):
                     req = message[len(pushword):].strip()
-                    request_text = f"{req} ({author}さん) [{settings.platform}:{stream_id}]"
-                    self.common_requests.append(request_text)
+                    # 辞書形式でリクエストを保存
+                    request_data = {
+                        'content': req,
+                        'author': author,
+                        'platform': settings.platform,
+                        'stream_id': stream_id
+                    }
+                    self.common_requests.append(request_data)
                     
                     # リクエスト処理数更新
                     settings.processed_requests += 1
@@ -992,9 +1216,18 @@ class MultiStreamCommentHelper:
                     
     def update_request_display(self):
         """共通リクエスト表示を更新"""
-        self.request_listbox.delete(0, tk.END)
-        for req in self.common_requests:
-            self.request_listbox.insert(tk.END, req)
+        # 既存の項目を削除
+        for item in self.request_tree.get_children():
+            self.request_tree.delete(item)
+        
+        # 新しい項目を追加（番号付き）
+        for idx, req in enumerate(self.common_requests, start=1):
+            self.request_tree.insert('', tk.END, values=(
+                idx,
+                req['content'],
+                req['author'],
+                req['platform']
+            ))
             
     def generate_xml(self):
         """XMLファイルを生成"""
@@ -1004,7 +1237,9 @@ class MultiStreamCommentHelper:
             
             # 共通リクエストリストを使用
             for req in self.common_requests:
-                f.write(f'<item>{self.escape_for_xml(req)}</item>\n')
+                # 辞書形式のリクエストを文字列に整形
+                request_text = f"{req['content']} ({req['author']}さん) [{req['platform']}]"
+                f.write(f'<item>{self.escape_for_xml(request_text)}</item>\n')
                     
             f.write('</TODOs>\n')
             
@@ -1017,49 +1252,71 @@ class MultiStreamCommentHelper:
                    .replace("'", '&apos;'))
                    
     def add_manual_request(self):
-        """手動でリクエストを追加"""
-        request = self.manual_req_entry.get().strip()
-        if request:
-            request_text = f"{request} (手動追加)"
-            self.common_requests.append(request_text)
+        """手動リクエストを追加"""
+        req = self.manual_req_entry.get().strip()
+        if req:
+            # 手動追加の場合は辞書形式で保存
+            request_data = {
+                'content': req,
+                'author': '手動追加',
+                'platform': 'manual',
+                'stream_id': 'manual'
+            }
+            self.common_requests.append(request_data)
             self.update_request_display()
             self.generate_xml()
             self.manual_req_entry.delete(0, tk.END)
             
     def remove_selected_request(self):
         """選択されたリクエストを削除"""
-        selection = self.request_listbox.curselection()
+        selection = self.request_tree.selection()
         if selection:
-            index = selection[0]
+            item = self.request_tree.item(selection[0])
+            # 番号から実際のインデックスを取得（番号は1から始まる）
+            index = item['values'][0] - 1
             self.common_requests.pop(index)
             self.update_request_display()
             self.generate_xml()
             
     def move_request_up(self):
         """選択されたリクエストを上に移動"""
-        selection = self.request_listbox.curselection()
-        if selection and selection[0] > 0:
-            index = selection[0]
-            # リストの要素を入れ替え
-            self.common_requests[index], self.common_requests[index-1] = \
-                self.common_requests[index-1], self.common_requests[index]
-            self.update_request_display()
-            # 選択状態を維持
-            self.request_listbox.selection_set(index-1)
-            self.generate_xml()
+        selection = self.request_tree.selection()
+        if selection:
+            item = self.request_tree.item(selection[0])
+            # 番号から実際のインデックスを取得（番号は1から始まる）
+            index = item['values'][0] - 1
+            if index > 0:
+                # リストの順序を入れ替え
+                self.common_requests[index], self.common_requests[index-1] = \
+                    self.common_requests[index-1], self.common_requests[index]
+                self.update_request_display()
+                self.generate_xml()
+                # 選択を移動後の位置に（番号で選択）
+                for item_id in self.request_tree.get_children():
+                    if self.request_tree.item(item_id)['values'][0] == index:
+                        self.request_tree.selection_set(item_id)
+                        self.request_tree.see(item_id)
+                        break
             
     def move_request_down(self):
         """選択されたリクエストを下に移動"""
-        selection = self.request_listbox.curselection()
-        if selection and selection[0] < len(self.common_requests) - 1:
-            index = selection[0]
-            # リストの要素を入れ替え
-            self.common_requests[index], self.common_requests[index+1] = \
-                self.common_requests[index+1], self.common_requests[index]
-            self.update_request_display()
-            # 選択状態を維持
-            self.request_listbox.selection_set(index+1)
-            self.generate_xml()
+        selection = self.request_tree.selection()
+        if selection:
+            item = self.request_tree.item(selection[0])
+            # 番号から実際のインデックスを取得（番号は1から始まる）
+            index = item['values'][0] - 1
+            if index < len(self.common_requests) - 1:
+                # リストの順序を入れ替え
+                self.common_requests[index], self.common_requests[index+1] = \
+                    self.common_requests[index+1], self.common_requests[index]
+                self.update_request_display()
+                self.generate_xml()
+                # 選択を移動後の位置に（番号で選択）
+                for item_id in self.request_tree.get_children():
+                    if self.request_tree.item(item_id)['values'][0] == index + 2:
+                        self.request_tree.selection_set(item_id)
+                        self.request_tree.see(item_id)
+                        break
             
     def clear_all_requests(self):
         """全リクエストをクリア"""
@@ -1069,53 +1326,27 @@ class MultiStreamCommentHelper:
             self.generate_xml()
             
     def clear_all_comments(self):
-        """全配信の共通コメント表示をクリア"""
-        for item in self.comment_tree.get_children():
-            self.comment_tree.delete(item)
-        
-        # 各配信のコメント履歴もクリア
-        for settings in self.stream_manager.streams.values():
-            settings.comments.clear()
+        """全コメントをクリア"""
+        if messagebox.askyesno("確認", "全てのコメントをクリアしますか？"):
+            # Treeviewをクリア
+            for item in self.comment_tree.get_children():
+                self.comment_tree.delete(item)
             
-    def add_pushword(self, stream_id, listbox):
-        """プッシュワードを追加"""
-        word = simpledialog.askstring("追加", "リクエスト追加ワードを入力:")
-        if word and word not in self.stream_manager.streams[stream_id].pushwords:
-            self.stream_manager.streams[stream_id].pushwords.append(word)
-            listbox.insert(tk.END, word)
-            
-    def remove_pushword(self, stream_id, listbox):
-        """プッシュワードを削除"""
-        selection = listbox.curselection()
-        if selection:
-            index = selection[0]
-            self.stream_manager.streams[stream_id].pushwords.pop(index)
-            listbox.delete(index)
-            
-    def add_pullword(self, stream_id, listbox):
-        """プルワードを追加"""
-        word = simpledialog.askstring("追加", "リクエスト削除ワードを入力:")
-        if word and word not in self.stream_manager.streams[stream_id].pullwords:
-            self.stream_manager.streams[stream_id].pullwords.append(word)
-            listbox.insert(tk.END, word)
-            
-    def remove_pullword(self, stream_id, listbox):
-        """プルワードを削除"""
-        selection = listbox.curselection()
-        if selection:
-            index = selection[0]
-            self.stream_manager.streams[stream_id].pullwords.pop(index)
-            listbox.delete(index)
-        
+            # 各ストリームのコメントリストもクリア
+            for stream_id, settings in self.stream_manager.streams.items():
+                settings.comments.clear()
+                if hasattr(settings, 'comment_count_label'):
+                    settings.comment_count_label.config(text="0")
+                    
     def show_settings(self):
-        """グローバル設定ダイアログ"""
+        """設定ダイアログを表示"""
         settings_window = tk.Toplevel(self.root)
         settings_window.title("設定")
-        settings_window.geometry("600x700")
+        settings_window.geometry("600x600")
         settings_window.transient(self.root)
         settings_window.grab_set()
         
-        # ノートブック（タブ）
+        # タブ構成
         settings_notebook = ttk.Notebook(settings_window)
         settings_notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
@@ -1123,34 +1354,47 @@ class MultiStreamCommentHelper:
         obs_frame = ttk.Frame(settings_notebook)
         settings_notebook.add(obs_frame, text="OBS設定")
         
-        obs_settings_frame = ttk.LabelFrame(obs_frame, text="OBS WebSocket設定")
+        obs_settings_frame = ttk.LabelFrame(obs_frame, text="OBS接続設定")
         obs_settings_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Label(obs_settings_frame, text="Host:").grid(row=0, column=0, sticky=tk.W, padx=10, pady=5)
+        # OBS設定フォーム
+        host_frame = ttk.Frame(obs_settings_frame)
+        host_frame.pack(fill=tk.X, padx=10, pady=5)
+        ttk.Label(host_frame, text="ホスト:").pack(side=tk.LEFT)
         obs_host_var = tk.StringVar(value=self.global_settings.obs_host)
-        ttk.Entry(obs_settings_frame, textvariable=obs_host_var).grid(row=0, column=1, padx=10, pady=5)
+        ttk.Entry(host_frame, textvariable=obs_host_var, width=30).pack(side=tk.LEFT, padx=(5, 0))
         
-        ttk.Label(obs_settings_frame, text="Port:").grid(row=1, column=0, sticky=tk.W, padx=10, pady=5)
+        port_frame = ttk.Frame(obs_settings_frame)
+        port_frame.pack(fill=tk.X, padx=10, pady=5)
+        ttk.Label(port_frame, text="ポート:").pack(side=tk.LEFT)
         obs_port_var = tk.StringVar(value=str(self.global_settings.obs_port))
-        ttk.Entry(obs_settings_frame, textvariable=obs_port_var).grid(row=1, column=1, padx=10, pady=5)
+        ttk.Entry(port_frame, textvariable=obs_port_var, width=30).pack(side=tk.LEFT, padx=(5, 0))
         
-        ttk.Label(obs_settings_frame, text="Password:").grid(row=2, column=0, sticky=tk.W, padx=10, pady=5)
+        passwd_frame = ttk.Frame(obs_settings_frame)
+        passwd_frame.pack(fill=tk.X, padx=10, pady=5)
+        ttk.Label(passwd_frame, text="パスワード:").pack(side=tk.LEFT)
         obs_passwd_var = tk.StringVar(value=self.global_settings.obs_passwd)
-        ttk.Entry(obs_settings_frame, textvariable=obs_passwd_var, show="*").grid(row=2, column=1, padx=10, pady=5)
+        ttk.Entry(passwd_frame, textvariable=obs_passwd_var, width=30, show="*").pack(side=tk.LEFT, padx=(5, 0))
         
-        # その他設定
-        other_frame = ttk.LabelFrame(obs_frame, text="その他")
-        other_frame.pack(fill=tk.X, padx=10, pady=10)
+        # その他の設定
+        other_settings_frame = ttk.LabelFrame(obs_frame, text="その他の設定")
+        other_settings_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         
         keep_top_var = tk.BooleanVar(value=self.global_settings.keep_on_top)
-        ttk.Checkbutton(other_frame, text="常に最前面に表示", variable=keep_top_var).pack(anchor=tk.W, padx=10, pady=5)
+        ttk.Checkbutton(other_settings_frame, text="ウィンドウを最前面に表示", 
+                       variable=keep_top_var).pack(anchor=tk.W, padx=10, pady=5)
+        
+        # デバッグ設定
+        debug_settings_frame = ttk.LabelFrame(obs_frame, text="デバッグ設定")
+        debug_settings_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         
         debug_enabled_var = tk.BooleanVar(value=self.global_settings.debug_enabled)
-        ttk.Checkbutton(other_frame, text="デバッグ出力を有効にする（要再起動）", variable=debug_enabled_var).pack(anchor=tk.W, padx=10, pady=5)
+        ttk.Checkbutton(debug_settings_frame, text="デバッグモードを有効にする（再起動が必要）", 
+                       variable=debug_enabled_var).pack(anchor=tk.W, padx=10, pady=5)
         
         # トリガーワード設定タブ
         trigger_frame = ttk.Frame(settings_notebook)
-        settings_notebook.add(trigger_frame, text="トリガーワード設定")
+        settings_notebook.add(trigger_frame, text="トリガーワード")
         
         # プッシュワード設定
         push_frame = ttk.LabelFrame(trigger_frame, text="リクエスト追加ワード（全配信共通）")
@@ -1257,17 +1501,12 @@ class MultiStreamCommentHelper:
         
         # 初期データ設定
         for manager in self.global_settings.managers:
-            manager_listbox.insert(tk.END, manager)
+            display_text = f"[{manager['platform']}] {manager['name']} ({manager['id']})"
+            manager_listbox.insert(tk.END, display_text)
         
         manager_button_frame = ttk.Frame(manager_frame)
         manager_button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         
-        def add_manager():
-            manager = simpledialog.askstring("追加", "管理者名またはIDを入力:")
-            if manager and manager not in self.global_settings.managers:
-                self.global_settings.managers.append(manager)
-                manager_listbox.insert(tk.END, manager)
-                
         def remove_manager():
             selection = manager_listbox.curselection()
             if selection:
@@ -1275,10 +1514,46 @@ class MultiStreamCommentHelper:
                 self.global_settings.managers.pop(index)
                 manager_listbox.delete(index)
         
-        ttk.Button(manager_button_frame, text="追加", command=add_manager).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(manager_button_frame, text="削除", command=remove_manager).pack(side=tk.LEFT, padx=(0, 5))
         
         ttk.Label(manager_frame, text="※コメントから右クリックで管理者IDに追加することもできます", 
+                 foreground="gray").pack(padx=10, pady=(0, 10))
+        
+        # NGユーザ設定タブ
+        ng_user_frame = ttk.Frame(settings_notebook)
+        settings_notebook.add(ng_user_frame, text="NGユーザ設定")
+        
+        ng_settings_frame = ttk.LabelFrame(ng_user_frame, text="NGユーザ管理")
+        ng_settings_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        ng_list_frame = ttk.Frame(ng_settings_frame)
+        ng_list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        ng_listbox = tk.Listbox(ng_list_frame, height=10)
+        ng_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        ng_scroll = ttk.Scrollbar(ng_list_frame, orient=tk.VERTICAL, command=ng_listbox.yview)
+        ng_listbox.configure(yscrollcommand=ng_scroll.set)
+        ng_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # 初期データ設定
+        for ng_user in self.global_settings.ng_users:
+            display_text = f"[{ng_user['platform']}] {ng_user['name']} ({ng_user['id']})"
+            ng_listbox.insert(tk.END, display_text)
+        
+        ng_button_frame = ttk.Frame(ng_settings_frame)
+        ng_button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        
+        def remove_ng_user():
+            selection = ng_listbox.curselection()
+            if selection:
+                index = selection[0]
+                self.global_settings.ng_users.pop(index)
+                ng_listbox.delete(index)
+        
+        ttk.Button(ng_button_frame, text="削除", command=remove_ng_user).pack(side=tk.LEFT, padx=(0, 5))
+        
+        ttk.Label(ng_settings_frame, text="※コメント一覧から右クリックでNGユーザに追加できます", 
                  foreground="gray").pack(padx=10, pady=(0, 10))
         
         # ボタン
