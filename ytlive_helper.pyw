@@ -533,6 +533,42 @@ class MultiStreamCommentHelper:
         else:
             return None
     
+    def add_entry_context_menu(self, entry_widget):
+        """Entry/Entryウィジェットに右クリックメニューを追加
+        
+        Args:
+            entry_widget: Entry/Entryウィジェット
+        """
+        # 右クリックメニューを作成
+        context_menu = tk.Menu(entry_widget, tearoff=0)
+        
+        def cut_text():
+            entry_widget.event_generate('<<Cut>>')
+        
+        def copy_text():
+            entry_widget.event_generate('<<Copy>>')
+        
+        def paste_text():
+            entry_widget.event_generate('<<Paste>>')
+        
+        def select_all():
+            entry_widget.select_range(0, tk.END)
+            entry_widget.icursor(tk.END)
+        
+        context_menu.add_command(label="カット", command=cut_text)
+        context_menu.add_command(label="コピー", command=copy_text)
+        context_menu.add_command(label="ペースト", command=paste_text)
+        context_menu.add_separator()
+        context_menu.add_command(label="全て選択", command=select_all)
+        
+        def show_context_menu(event):
+            try:
+                context_menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                context_menu.grab_release()
+        
+        entry_widget.bind("<Button-3>", show_context_menu)
+    
     def get_stream_title(self, platform, url):
         """配信タイトルを取得（スケルトン関数 - 実装が必要）
         
@@ -608,6 +644,7 @@ class MultiStreamCommentHelper:
         ttk.Label(add_frame, text="配信URL:").pack(side=tk.LEFT)
         self.url_entry = ttk.Entry(add_frame, width=70)
         self.url_entry.pack(side=tk.LEFT, padx=(5, 0))
+        self.add_entry_context_menu(self.url_entry)  # 右クリックメニュー追加
         
         ttk.Button(add_frame, text="追加", command=self.add_stream).pack(side=tk.LEFT, padx=(10, 0))
         
@@ -650,6 +687,8 @@ class MultiStreamCommentHelper:
         self.stream_context_menu.add_command(label="受信開始", command=self.start_selected_stream)
         self.stream_context_menu.add_command(label="受信停止", command=self.stop_selected_stream)
         self.stream_context_menu.add_separator()
+        self.stream_context_menu.add_command(label="URLを編集", command=self.edit_stream_url)
+        self.stream_context_menu.add_separator()
         self.stream_context_menu.add_command(label="削除", command=self.remove_selected_stream)
         
         def on_stream_right_click(event):
@@ -660,7 +699,16 @@ class MultiStreamCommentHelper:
                 self.stream_context_menu.post(event.x_root, event.y_root)
         
         def on_stream_double_click(event):
-            # ダブルクリックで受信のON/OFF切り替え
+            # ダブルクリックされた列を確認
+            column = self.stream_tree.identify_column(event.x)
+            column_index = int(column.replace('#', '')) - 1
+            
+            # URL列（インデックス3）の場合は編集
+            if column_index == 3:
+                self.edit_stream_url()
+                return
+            
+            # それ以外の列の場合は受信のON/OFF切り替え
             item = self.stream_tree.identify_row(event.y)
             if item:
                 self.stream_tree.selection_set(item)
@@ -679,7 +727,7 @@ class MultiStreamCommentHelper:
         
         # 操作説明
         help_label = ttk.Label(stream_frame, 
-                              text="※ダブルクリックで受信ON/OFF切り替え、右クリックでメニュー表示", 
+                              text="※ダブルクリックで受信ON/OFF切り替え、URL列ダブルクリックでURL編集、右クリックでメニュー表示", 
                               foreground="gray")
         help_label.pack(padx=10, pady=(5, 10))
         
@@ -725,6 +773,7 @@ class MultiStreamCommentHelper:
         ttk.Label(req_button_frame, text="手動追加:").pack(side=tk.LEFT)
         self.manual_req_entry = ttk.Entry(req_button_frame, width=30)
         self.manual_req_entry.pack(side=tk.LEFT, padx=(5, 10))
+        self.add_entry_context_menu(self.manual_req_entry)  # 右クリックメニュー追加
         
         ttk.Button(req_button_frame, text="追加", command=self.add_manual_request).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(req_button_frame, text="削除", command=self.remove_selected_request).pack(side=tk.LEFT, padx=(0, 5))
@@ -1003,6 +1052,107 @@ class MultiStreamCommentHelper:
                 if stream_id in tab_text:
                     self.notebook.forget(i)
                     break
+    
+    def edit_stream_url(self):
+        """選択された配信のURLを編集"""
+        selection = self.stream_tree.selection()
+        if not selection:
+            messagebox.showwarning("警告", "配信を選択してください")
+            return
+        
+        item = self.stream_tree.item(selection[0])
+        stream_id = item['values'][0]
+        
+        if stream_id not in self.stream_manager.streams:
+            return
+        
+        settings = self.stream_manager.streams[stream_id]
+        current_url = settings.url
+        
+        # カスタムURL編集ダイアログ
+        dialog = tk.Toplevel(self.root)
+        dialog.title("URL編集")
+        dialog.geometry("650x150")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # 配信ID表示
+        info_frame = ttk.Frame(dialog)
+        info_frame.pack(fill=tk.X, padx=20, pady=(20, 10))
+        ttk.Label(info_frame, text=f"配信ID: {stream_id}", font=('', 10, 'bold')).pack(anchor=tk.W)
+        
+        # URL入力
+        url_frame = ttk.Frame(dialog)
+        url_frame.pack(fill=tk.X, padx=20, pady=10)
+        ttk.Label(url_frame, text="新しいURL:").pack(side=tk.LEFT)
+        url_entry = ttk.Entry(url_frame, width=50)
+        url_entry.pack(side=tk.LEFT, padx=(5, 0), fill=tk.X, expand=True)
+        url_entry.insert(0, current_url)
+        url_entry.select_range(0, tk.END)
+        url_entry.focus()
+        
+        # 右クリックメニュー追加
+        self.add_entry_context_menu(url_entry)
+        
+        # ボタン
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(fill=tk.X, padx=20, pady=(10, 20))
+        
+        result = {'url': None}
+        
+        def on_ok():
+            result['url'] = url_entry.get().strip()
+            dialog.destroy()
+        
+        def on_cancel():
+            dialog.destroy()
+        
+        ttk.Button(button_frame, text="OK", command=on_ok).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text="キャンセル", command=on_cancel).pack(side=tk.RIGHT)
+        
+        # Enterキーで確定
+        url_entry.bind("<Return>", lambda e: on_ok())
+        url_entry.bind("<Escape>", lambda e: on_cancel())
+        
+        # ダイアログを中央に配置
+        dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() - dialog.winfo_width()) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - dialog.winfo_height()) // 2
+        dialog.geometry(f"+{x}+{y}")
+        
+        # ダイアログが閉じるまで待機
+        self.root.wait_window(dialog)
+        
+        new_url = result['url']
+        
+        if new_url and new_url != current_url:
+            # プラットフォームを再判定
+            new_platform = self.detect_platform(new_url)
+            if not new_platform:
+                messagebox.showerror("エラー", "対応していないURLです。\nYouTubeまたはTwitchのURLを入力してください。")
+                return
+            
+            # URLとプラットフォームを更新
+            settings.url = new_url
+            settings.platform = new_platform
+            
+            # タイトルも再取得
+            new_title = self.get_stream_title(new_platform, new_url)
+            settings.title = new_title
+            
+            # タイトルラベルが存在すれば更新
+            if hasattr(settings, 'title_label'):
+                settings.title_label.config(text=new_title if new_title else "(取得中...)")
+            
+            # リストを更新
+            self.update_stream_list()
+            
+            # 配信が実行中の場合は警告
+            if settings.is_active:
+                messagebox.showinfo("URL更新", 
+                    "URLを更新しました。\n\n配信が実行中です。変更を反映するには、一度停止して再度開始してください。")
+            else:
+                messagebox.showinfo("URL更新", "URLを更新しました。")
                     
     def configure_selected_stream(self):
         """選択された配信の設定"""
