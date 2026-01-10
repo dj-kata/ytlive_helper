@@ -9,9 +9,8 @@ dependencies = [
     "nuitka>=2.8.9",
     "numpy>=2.4.0",
     "obsws-python>=1.8.0",
+    "packaging>=25.0",
     "pillow>=12.1.0",
-    "pyarmor>=9.2.3",
-    "pyinstaller>=6.17.0",
     "pytchat>=0.5.5",
     "requests>=2.32.5",
 ]

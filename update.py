@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 import logging, logging.handlers
 import traceback
 from bs4 import BeautifulSoup
-import icon
+# import icon
 
 os.makedirs('log', exist_ok=True)
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ class GitHubUpdater:
         return os.path.join(base_path, relative_path)
 
     def get_latest_version(self):
-        self.ico=self.ico_path('icon.ico')
+        # self.ico=self.ico_path('icon.ico')
         ret = None
         url = f'https://github.com/{self.github_author}/{self.github_repo}/tags'
         r = requests.get(url)
@@ -105,8 +105,8 @@ class GitHubUpdater:
     def create_gui(self):
         """アップデート用GUIの作成"""
         self.root = tk.Tk()
-        self.icon = tk.PhotoImage(data=icon.icon_data)
-        self.root.iconphoto(False, self.icon)
+        # self.icon = tk.PhotoImage(data=icon.icon_data)
+        # self.root.iconphoto(False, self.icon)
         self.root.title("プログラム更新中...")
         self.root.geometry("500x200")
         self.root.resizable(False, False)
@@ -327,12 +327,12 @@ del "%~f0"
         """
         logger.info('check and update')
         try:
-            self.create_gui()
             # アップデート確認（GUIなし）
             is_update_available, latest_version, download_url = self.check_for_updates()
             logger.info(f"available:{is_update_available}, latest:{latest_version}, url:{download_url}")
             
             if is_update_available:
+                self.create_gui()
                 # 確認ダイアログ
                 result = messagebox.askyesno(
                     "アップデート確認",
@@ -377,6 +377,12 @@ del "%~f0"
                     
                     self.root.mainloop()
                     return True
+                else:
+                    # 更新しない場合はGUIを閉じる
+                    if self.root:
+                        self.root.destroy()
+                        self.root = None
+                    return False
             else:
                 logger.info('no update')
             return False
@@ -405,7 +411,9 @@ del "%~f0"
 def main():
     try:
         with open('version.txt', 'r') as f:
-            SWVER = f.readline().strip()[2:]
+            tmp = f.readline()
+            print(tmp)
+            SWVER = tmp.strip()[2:] if tmp.startswith('v') else tmp.strip()
     except Exception:
         logger.debug(traceback.format_exc())
         SWVER = "0.0.0"

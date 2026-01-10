@@ -26,6 +26,9 @@ from obssocket import OBSSocket
 # 分割したモジュールをインポート
 from gui_components import GUIComponents
 from comment_handler import CommentHandler
+from update import GitHubUpdater
+
+os.makedirs('log', exist_ok=True)
 
 # グローバル設定を先に読み込んでログレベルを決定
 def setup_logging():
@@ -49,7 +52,7 @@ def setup_logging():
         console_handler = None  # コンソール出力なし
     
     # ファイルハンドラー
-    file_handler = logging.FileHandler('./dbg.log', encoding='utf-8')
+    file_handler = logging.FileHandler('./log/dbg.log', encoding='utf-8')
     file_handler.setLevel(log_level)
     
     # フォーマッター
@@ -93,6 +96,14 @@ def setup_logging():
 # ログ設定を初期化
 DEBUG_ENABLED = setup_logging()
 logger = logging.getLogger(__name__)
+
+try:
+    with open('version.txt', 'r') as f:
+        tmp = f.readline()
+        SWVER = tmp.strip()[2:] if tmp.startswith('v') else tmp.strip()
+except Exception:
+    logger.debug(traceback.format_exc())
+    SWVER = "0.0.0"
 
 def debug_print(*args, **kwargs):
     """デバッグ設定が有効な時のみprint出力"""
@@ -530,7 +541,7 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         
         # GUI初期化
         self.root = tk.Tk()
-        self.root.title("Multi-Stream Comment Helper")
+        self.root.title(f"ytlive_helper {SWVER}")
         self.root.geometry("1000x700")
         if self.global_settings.keep_on_top:
             self.root.attributes('-topmost', True)
@@ -944,5 +955,15 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         self.root.mainloop()
 
 if __name__ == '__main__':
+    updater = GitHubUpdater(
+        github_author='dj-kata',
+        github_repo='ytlive_helper',
+        current_version=SWVER,           # 現在のバージョン
+        main_exe_name="ytlive_helper.exe",  # メインプログラムのexe名
+        updator_exe_name="ytlive_helper.exe",           # アップデート用プログラムのexe名
+    )
+    
+    # メインプログラムから呼び出す場合
+    updater.check_and_update()
     app = MultiStreamCommentHelper()
     app.run()
