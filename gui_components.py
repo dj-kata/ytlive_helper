@@ -83,6 +83,9 @@ class GUIComponents:
         self.url_entry.pack(side=tk.LEFT, padx=(5, 0))
         self.add_entry_context_menu(self.url_entry)  # 右クリックメニュー追加
         
+        # Enterキーで追加
+        self.url_entry.bind("<Return>", lambda e: self.add_stream())
+        
         ttk.Button(add_frame, text=self.strings["stream"]["add_button"], command=self.add_stream).pack(side=tk.LEFT, padx=(10, 0))
         
         # プラットフォーム表示（読み取り専用）
@@ -133,6 +136,7 @@ class GUIComponents:
         self.stream_context_menu.add_command(label=self.strings["context_menu"]["stop_receive"], command=self.stop_selected_stream)
         self.stream_context_menu.add_separator()
         self.stream_context_menu.add_command(label=self.strings["stream"]["edit_url"], command=self.edit_stream_url)
+        self.stream_context_menu.add_command(label=self.strings["stream"]["update_title"], command=self.update_selected_stream_title)
         self.stream_context_menu.add_separator()
         self.stream_context_menu.add_command(label=self.strings["stream"]["delete"], command=self.remove_selected_stream)
         
@@ -230,6 +234,9 @@ class GUIComponents:
         self.manual_req_entry.pack(side=tk.LEFT, padx=(5, 10))
         self.add_entry_context_menu(self.manual_req_entry)  # 右クリックメニュー追加
         
+        # Enterキーで追加
+        self.manual_req_entry.bind("<Return>", lambda e: self.add_manual_request())
+        
         ttk.Button(req_button_frame, text=self.strings["request"]["add_button"], command=self.add_manual_request).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(req_button_frame, text=self.strings["request"]["delete_button"], command=self.remove_selected_request).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(req_button_frame, text=self.strings["request"]["move_up"], command=self.move_request_up).pack(side=tk.LEFT, padx=(0, 5))
@@ -242,21 +249,21 @@ class GUIComponents:
         
         # コメントTreeview - 横スクロールも追加、カラム幅固定
         comment_columns = (
-            self.strings["columns"]["datetime"], 
             self.strings["columns"]["user"], 
             self.strings["columns"]["comment"], 
             self.strings["columns"]["stream_id"], 
-            self.strings["columns"]["platform"]
+            self.strings["columns"]["platform"],
+            self.strings["columns"]["datetime"]
         )
         self.comment_tree = ttk.Treeview(comment_frame, columns=comment_columns, show='headings', height=12)
         
         # カラム幅を固定（stretch=Falseで自動リサイズを無効化）
         column_widths = {
-            self.strings["columns"]["datetime"]: 140, 
             self.strings["columns"]["user"]: 120, 
             self.strings["columns"]["comment"]: 400, 
             self.strings["columns"]["stream_id"]: 120, 
-            self.strings["columns"]["platform"]: 100
+            self.strings["columns"]["platform"]: 100,
+            self.strings["columns"]["datetime"]: 140
         }
         for col in comment_columns:
             self.comment_tree.heading(col, text=col, anchor='w')  # 列名を左揃えに
@@ -325,27 +332,63 @@ class GUIComponents:
         """配信用の情報表示タブを追加"""
         # タブフレーム作成
         tab_frame = ttk.Frame(self.notebook)
-        self.notebook.add(tab_frame, text=f"{stream_settings.platform}: {stream_settings.stream_id}")
+        self.notebook.add(tab_frame, text=stream_settings.stream_id)
         
         # 配信情報表示
         info_frame = ttk.LabelFrame(tab_frame, text=self.strings["stream_info"]["title"])
         info_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        # タイトル表示
+        # タイトル表示（クリックでブラウザを開く）
         title_info_frame = ttk.Frame(info_frame)
         title_info_frame.pack(fill=tk.X, padx=10, pady=5)
         ttk.Label(title_info_frame, text=self.strings["stream_info"]["stream_title"]).pack(side=tk.LEFT)
         title_text = stream_settings.title if stream_settings.title else self.strings["stream_info"]["title_loading"]
         title_label = ttk.Label(title_info_frame, text=title_text, 
-                               foreground="blue", wraplength=500)
+                               foreground="blue", wraplength=500, cursor="hand2")
         title_label.pack(side=tk.LEFT, padx=(5, 0))
         
-        # URL表示
+        # タイトルクリック時にブラウザで開く
+        def open_title_in_browser(event):
+            import webbrowser
+            webbrowser.open(stream_settings.url)
+        
+        title_label.bind("<Button-1>", open_title_in_browser)
+        
+        # マウスオーバー時にアンダーラインを表示
+        def on_title_enter(event):
+            title_label.configure(font=('TkDefaultFont', 9, 'underline'))
+        
+        def on_title_leave(event):
+            title_label.configure(font=('TkDefaultFont', 9))
+        
+        title_label.bind("<Enter>", on_title_enter)
+        title_label.bind("<Leave>", on_title_leave)
+
+        
+        # URL表示（クリックでブラウザを開く）
         url_info_frame = ttk.Frame(info_frame)
         url_info_frame.pack(fill=tk.X, padx=10, pady=5)
         ttk.Label(url_info_frame, text=self.strings["stream_info"]["url"]).pack(side=tk.LEFT)
-        url_label = ttk.Label(url_info_frame, text=stream_settings.url, foreground="blue")
+        url_label = ttk.Label(url_info_frame, text=stream_settings.url, foreground="blue", cursor="hand2")
         url_label.pack(side=tk.LEFT, padx=(5, 0))
+        
+        # URLクリック時にブラウザで開く
+        def open_url_in_browser(event):
+            import webbrowser
+            webbrowser.open(stream_settings.url)
+        
+        url_label.bind("<Button-1>", open_url_in_browser)
+        
+        # マウスオーバー時にアンダーラインを表示
+        def on_url_enter(event):
+            url_label.configure(font=('TkDefaultFont', 9, 'underline'))
+        
+        def on_url_leave(event):
+            url_label.configure(font=('TkDefaultFont', 9))
+        
+        url_label.bind("<Enter>", on_url_enter)
+        url_label.bind("<Leave>", on_url_leave)
+
         
         # プラットフォーム表示
         platform_info_frame = ttk.Frame(info_frame)
@@ -818,7 +861,7 @@ class GUIComponents:
                     if backup['is_active']:
                         settings.status_label.config(
                             text=self.strings["stream_info"]["status_running"], 
-                            foreground="green"
+                            foreground="red"
                         )
                     else:
                         settings.status_label.config(

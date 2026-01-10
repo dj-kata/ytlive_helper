@@ -26,9 +26,6 @@ from obssocket import OBSSocket
 # 分割したモジュールをインポート
 from gui_components import GUIComponents
 from comment_handler import CommentHandler
-from update import GitHubUpdater
-
-os.makedirs('log', exist_ok=True)
 
 # グローバル設定を先に読み込んでログレベルを決定
 def setup_logging():
@@ -52,7 +49,7 @@ def setup_logging():
         console_handler = None  # コンソール出力なし
     
     # ファイルハンドラー
-    file_handler = logging.FileHandler('./log/dbg.log', encoding='utf-8')
+    file_handler = logging.FileHandler('./dbg.log', encoding='utf-8')
     file_handler.setLevel(log_level)
     
     # フォーマッター
@@ -96,14 +93,6 @@ def setup_logging():
 # ログ設定を初期化
 DEBUG_ENABLED = setup_logging()
 logger = logging.getLogger(__name__)
-
-try:
-    with open('version.txt', 'r') as f:
-        tmp = f.readline()
-        SWVER = tmp.strip()[2:] if tmp.startswith('v') else tmp.strip()
-except Exception:
-    logger.debug(traceback.format_exc())
-    SWVER = "0.0.0"
 
 def debug_print(*args, **kwargs):
     """デバッグ設定が有効な時のみprint出力"""
@@ -281,7 +270,8 @@ class YouTubeCommentReceiver(CommentReceiver):
             debug_print(f"DEBUG: Extracted video_id: {video_id}")
             debug_print(f"DEBUG: Creating pytchat.create with video_id: {video_id}")
             
-            self.livechat = pytchat.create(video_id=video_id)
+            # interruptable=Falseでシグナルハンドラを無効化（スレッドで動作可能に）
+            self.livechat = pytchat.create(video_id=video_id, interruptable=False)
             debug_print(f"DEBUG: pytchat.create successful, livechat object created")
             debug_print(f"DEBUG: Starting comment loop")
             
@@ -539,9 +529,15 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         self.auto_scroll = None  # setup_guiで初期化される
         self.common_requests = []  # 共通リクエストリスト
         
+        # プラットフォームごとのIDカウンター
+        self.stream_id_counters = {
+            'youtube': 0,
+            'twitch': 0
+        }
+        
         # GUI初期化
         self.root = tk.Tk()
-        self.root.title(f"ytlive_helper {SWVER}")
+        self.root.title("Multi-Stream Comment Helper")
         self.root.geometry("1000x700")
         if self.global_settings.keep_on_top:
             self.root.attributes('-topmost', True)
@@ -558,24 +554,31 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         if not self.global_settings.last_streams:
             return
         
+        stream_ids = []  # 追加したstream_idを記録
+        
         for url in self.global_settings.last_streams:
             platform = self.detect_platform(url)
             if platform:
-                stream_id = f"{platform}_{int(time.time() * 1000)}"
+                # プラットフォームごとの連番IDを生成
+                stream_id = f"{platform}_{self.stream_id_counters[platform]}"
+                self.stream_id_counters[platform] += 1
                 
-                # タイトル取得
-                title = self.get_stream_title(platform, url)
-                
+                # 空のタイトルで即座に追加
                 stream_settings = StreamSettings(
                     stream_id=stream_id,
                     platform=platform,
                     url=url,
-                    title=title
+                    title=""  # 空のタイトルで先に追加
                 )
                 self.stream_manager.add_stream(stream_settings)
                 self.add_stream_tab(stream_settings)
+                stream_ids.append(stream_id)
         
         self.update_stream_list()
+        
+        # バックグラウンドで全てのタイトルを取得
+        for stream_id in stream_ids:
+            self.fetch_title_async(stream_id)
     
     def detect_platform(self, url):
         """URLからプラットフォームを自動判定"""
@@ -586,9 +589,7 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         return None
     
     def get_stream_title(self, platform, url):
-        """配信タイトルを取得（スケルトン関数 - 実装が必要）
-        
-        TODO: Implement using YouTube Data API / Twitch API
+        """配信タイトルを取得（BeautifulSoupでスクレイピング）
         
         Args:
             platform (str): 'youtube' or 'twitch'
@@ -597,20 +598,66 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         Returns:
             str: 配信タイトル（取得できない場合は空文字列）
         """
-        # 実装例（APIキーが必要）:
-        # if platform == 'youtube':
-        #     video_id = extract_video_id(url)
-        #     # YouTube Data API v3を使用してタイトル取得
-        #     return get_youtube_title(video_id)
-        # elif platform == 'twitch':
-        #     channel_name = extract_channel_name(url)
-        #     # Twitch APIを使用してタイトル取得
-        #     return get_twitch_title(channel_name)
-        
-        return ""  # 現在は空文字列を返す
+        try:
+            # User-Agentヘッダーを設定（ブロック回避）
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            # タイムアウト設定でページを取得（短縮: 5秒）
+            response = requests.get(url, headers=headers, timeout=5)
+            response.raise_for_status()
+            
+            # HTMLをパース
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            if platform == 'youtube':
+                # YouTubeのタイトル取得
+                # 方法1: og:titleメタタグから取得（最も確実）
+                og_title = soup.find('meta', property='og:title')
+                if og_title and og_title.get('content'):
+                    return og_title['content']
+                
+                # 方法2: titleタグから取得（フォールバック）
+                title_tag = soup.find('title')
+                if title_tag:
+                    title = title_tag.string
+                    # YouTubeの場合、タイトルに " - YouTube" が付いているので削除
+                    if title:
+                        return title.replace(' - YouTube', '').strip()
+                
+            elif platform == 'twitch':
+                # Twitchのタイトル取得
+                # 方法1: og:titleメタタグから取得
+                og_title = soup.find('meta', property='og:title')
+                if og_title and og_title.get('content'):
+                    return og_title['content']
+                
+                # 方法2: og:descriptionメタタグから取得（配信タイトルが入っている場合がある）
+                og_description = soup.find('meta', property='og:description')
+                if og_description and og_description.get('content'):
+                    return og_description['content']
+                
+                # 方法3: titleタグから取得（フォールバック）
+                title_tag = soup.find('title')
+                if title_tag and title_tag.string:
+                    return title_tag.string.strip()
+            
+            logger.warning(f"Could not extract title from {platform} URL: {url}")
+            return ""
+            
+        except requests.Timeout:
+            logger.warning(f"Timeout while fetching title from {url}")
+            return ""
+        except requests.RequestException as e:
+            logger.warning(f"Error fetching title from {url}: {e}")
+            return ""
+        except Exception as e:
+            logger.error(f"Unexpected error getting stream title: {e}")
+            return ""
     
     def update_stream_title(self, stream_id):
-        """指定された配信のタイトルを更新（オプション）
+        """指定された配信のタイトルを更新
         
         Args:
             stream_id (str): 配信ID
@@ -630,6 +677,67 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             
             # リストを更新
             self.update_stream_list()
+            
+            logger.info(f"Title updated for {stream_id}: {new_title}")
+        else:
+            logger.warning(f"Failed to update title for {stream_id}")
+    
+    def fetch_title_async(self, stream_id):
+        """バックグラウンドでタイトルを取得（非ブロッキング）
+        
+        Args:
+            stream_id (str): 配信ID
+        """
+        def fetch_thread():
+            """タイトル取得スレッド"""
+            if stream_id not in self.stream_manager.streams:
+                return
+            
+            settings = self.stream_manager.streams[stream_id]
+            new_title = self.get_stream_title(settings.platform, settings.url)
+            
+            if new_title:
+                # メインスレッドでGUI更新
+                self.root.after(0, lambda: self._update_title_callback(stream_id, new_title))
+        
+        # バックグラウンドスレッドで実行
+        thread = threading.Thread(target=fetch_thread, daemon=True)
+        thread.start()
+    
+    def _update_title_callback(self, stream_id, new_title):
+        """タイトル更新のコールバック（メインスレッドで実行）
+        
+        Args:
+            stream_id (str): 配信ID
+            new_title (str): 新しいタイトル
+        """
+        if stream_id not in self.stream_manager.streams:
+            return
+        
+        settings = self.stream_manager.streams[stream_id]
+        settings.title = new_title
+        
+        # タイトルラベルが存在すれば更新
+        if hasattr(settings, 'title_label'):
+            settings.title_label.config(text=new_title)
+        
+        # リストを更新
+        self.update_stream_list()
+        
+        logger.info(f"Title updated asynchronously for {stream_id}: {new_title}")
+    
+    def update_selected_stream_title(self):
+        """選択された配信のタイトルを更新"""
+        selection = self.stream_tree.selection()
+        if not selection:
+            messagebox.showwarning(self.strings["messages"]["warning"], self.strings["messages"]["select_stream"])
+            return
+            
+        item = self.stream_tree.item(selection[0])
+        stream_id = item['values'][0]
+        
+        # タイトル更新
+        self.update_stream_title(stream_id)
     
     def setup_obs(self):
         """OBS接続設定"""
@@ -664,18 +772,22 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             messagebox.showerror(self.strings["messages"]["error"], self.strings["messages"]["unsupported_url"])
             return
         
-        # ユニークなIDを生成
-        stream_id = f"{platform}_{int(time.time() * 1000)}"
+        # URL重複チェック
+        for existing_stream in self.stream_manager.streams.values():
+            if existing_stream.url == url:
+                messagebox.showerror(self.strings["messages"]["error"], self.strings["messages"]["duplicate_url"])
+                return
         
-        # タイトルを取得
-        title = self.get_stream_title(platform, url)
+        # プラットフォームごとの連番IDを生成
+        stream_id = f"{platform}_{self.stream_id_counters[platform]}"
+        self.stream_id_counters[platform] += 1
         
-        # StreamSettingsを作成
+        # StreamSettingsを作成（タイトルは空で先に追加）
         stream_settings = StreamSettings(
             stream_id=stream_id,
             platform=platform,
             url=url,
-            title=title
+            title=""  # 空のタイトルで即座に追加
         )
         
         # StreamManagerに追加
@@ -691,6 +803,9 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         self.url_entry.delete(0, tk.END)
         
         logger.info(f"Stream added: {stream_id} ({platform})")
+        
+        # バックグラウンドでタイトルを取得
+        self.fetch_title_async(stream_id)
     
     def start_selected_stream(self):
         """選択された配信を開始"""
@@ -704,9 +819,10 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         
         # コメント受信開始
         def comment_callback(comment_data):
-            """コメント受信時のコールバック"""
+            """コメント受信時のコールバック（メインスレッドで実行）"""
             comment_data['stream_id'] = stream_id
-            self.process_comment(stream_id, comment_data)
+            # GUI更新はメインスレッドで実行する必要があるため、root.after()を使用
+            self.root.after(0, lambda: self.process_comment(stream_id, comment_data))
         
         success = self.stream_manager.start_stream(stream_id, comment_callback)
         
@@ -717,7 +833,7 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             if hasattr(settings, 'status_label'):
                 settings.status_label.config(
                     text=self.strings["stream_info"]["status_running"], 
-                    foreground="green"
+                    foreground="red"
                 )
         else:
             messagebox.showerror(
@@ -955,15 +1071,5 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         self.root.mainloop()
 
 if __name__ == '__main__':
-    updater = GitHubUpdater(
-        github_author='dj-kata',
-        github_repo='ytlive_helper',
-        current_version=SWVER,           # 現在のバージョン
-        main_exe_name="ytlive_helper.exe",  # メインプログラムのexe名
-        updator_exe_name="ytlive_helper.exe",           # アップデート用プログラムのexe名
-    )
-    
-    # メインプログラムから呼び出す場合
-    updater.check_and_update()
     app = MultiStreamCommentHelper()
     app.run()

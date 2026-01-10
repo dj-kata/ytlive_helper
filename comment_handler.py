@@ -62,11 +62,11 @@ class CommentHandler:
         # Treeviewに追加（tagsに author_id と platform を格納）
         self.comment_tree.insert('', tk.END, 
             values=(
-                time_str,
                 comment_data['author'],
                 comment_data['message'],
                 comment_data.get('stream_id', ''),
-                comment_data['platform']
+                comment_data['platform'],
+                time_str
             ),
             tags=(comment_data.get('author_id', ''), comment_data['platform'])
         )
@@ -86,7 +86,7 @@ class CommentHandler:
         tags = self.comment_tree.item(item_id)['tags']
         
         if len(values) >= 2 and len(tags) >= 2:
-            author = values[1]  # ユーザー名
+            author = values[0]  # ユーザー名（列順序変更に対応）
             platform = tags[1]  # プラットフォーム
             author_id = tags[0]  # ユーザーID
             
@@ -124,7 +124,7 @@ class CommentHandler:
         tags = self.comment_tree.item(item_id)['tags']
 
         if len(values) >= 2 and len(tags) >= 2:
-            author = values[1]
+            author = values[0]  # ユーザー名（列順序変更に対応）
             platform = tags[1]
             author_id = tags[0]
 
