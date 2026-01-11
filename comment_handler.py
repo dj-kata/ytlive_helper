@@ -262,6 +262,9 @@ class CommentHandler:
                     self.update_request_display()
                     self.generate_xml()
                     logger.info(f"Request added: {request_content} by {author}")
+                    
+                    # 自動保存
+                    self.save_requests()
                 break
         
         # プルワードチェック
@@ -342,6 +345,9 @@ class CommentHandler:
                         self.update_request_display()
                         self.generate_xml()
                         logger.info(f"Removed {removed_count} requests by numbers: {numbers}")
+                        
+                        # 自動保存
+                        self.save_requests()
                     else:
                         logger.info(f"No requests removed - numbers may be out of range")
                 
@@ -373,6 +379,9 @@ class CommentHandler:
                                 self.update_request_display()
                                 self.generate_xml()
                                 logger.info(f"Request removed: {request_content} by {author}")
+                                
+                                # 自動保存
+                                self.save_requests()
                                 break
                         
                         if not found:

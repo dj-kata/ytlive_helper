@@ -444,6 +444,9 @@ class GUIComponents:
                 req['author'],
                 req['platform']
             ))
+        
+        # Ajax用のXMLファイルを生成
+        self.generate_todo_xml()
     
     def edit_stream_url(self):
         """選択された配信のURLを編集"""

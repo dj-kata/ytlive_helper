@@ -18,7 +18,7 @@ import socket
 
 # コメント取得ライブラリ
 import pytchat  # YouTube用
-from chat_downloader import ChatDownloader  # Twitch用（軽量で高速）
+from chat_downloader import ChatDownloader  # Twitch用
 
 from obssocket import OBSSocket
 
@@ -470,7 +470,17 @@ class YouTubeCommentReceiver(CommentReceiver):
                             'is_moderator': is_moderator
                         }
                         
-                        self.callback(comment_data)
+                        # GUIコールバック（メインループが終了している場合はスキップ）
+                        try:
+                            if not self.stop_event.is_set():
+                                self.callback(comment_data)
+                        except Exception as callback_error:
+                            # メインループ終了時のエラーを無視
+                            if "main thread is not in main loop" in str(callback_error):
+                                logger.debug("Main loop already terminated, stopping receiver")
+                                break
+                            else:
+                                logger.error(f"Error in callback: {callback_error}")
                         
                 except Exception as inner_e:
                     debug_print(f"DEBUG: Error in YouTube chat loop: {inner_e}")
@@ -480,16 +490,21 @@ class YouTubeCommentReceiver(CommentReceiver):
                 
         except KeyboardInterrupt:
             debug_print(f"DEBUG: KeyboardInterrupt detected in YouTube receiver")
-            logger.info(f"YouTube receiver interrupted by user")
+            logger.info(f"YouTube receiver interrupted by KeyboardInterrupt")
+        except SystemExit as e:
+            debug_print(f"DEBUG: SystemExit detected in YouTube receiver: {e}")
+            logger.warning(f"YouTube receiver received SystemExit: {e}")
         except Exception as e:
             logger.error(f"YouTube comment receiver error: {e}")
             debug_print(f"ERROR: YouTube comment receiver error: {e}")
             import traceback
             debug_print(f"ERROR: Traceback: {traceback.format_exc()}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
         finally:
             if self.livechat:
                 self.livechat.terminate()
                 debug_print(f"DEBUG: pytchat terminated")
+
 
 class TwitchCommentReceiver(CommentReceiver):
     """Twitchコメント受信クラス（chat-downloader使用）"""
@@ -500,19 +515,37 @@ class TwitchCommentReceiver(CommentReceiver):
         self.chat_downloader = None
         
     def start(self):
-        """chat-downloaderを使ったコメント受信"""
+        """chat-downloaderを使ったコメント受信（FileNotFoundError対策付き）"""
         try:
             debug_print(f"DEBUG: TwitchCommentReceiver.start() called")
             debug_print(f"DEBUG: URL: {self.settings.url}")
             
             # chat-downloaderでチャットを取得
-            self.chat_downloader = ChatDownloader()
+            # FileNotFoundError対策: message_formatsを無効化
+            try:
+                self.chat_downloader = ChatDownloader()
+            except FileNotFoundError as fnf_error:
+                # custom_formats.jsonが見つからない場合は警告を出して継続
+                logger.warning(f"ChatDownloader initialization warning: {fnf_error}")
+                debug_print(f"WARNING: ChatDownloader FileNotFoundError (continuing anyway): {fnf_error}")
+                self.chat_downloader = ChatDownloader()
             
             # タイムアウト設定でチャットを取得
-            chat = self.chat_downloader.get_chat(
-                self.settings.url,
-                timeout=30  # 接続タイムアウト（秒）
-            )
+            try:
+                chat = self.chat_downloader.get_chat(
+                    self.settings.url,
+                    timeout=30  # 接続タイムアウト（秒）
+                )
+            except FileNotFoundError as fnf_error:
+                # get_chat内でのFileNotFoundError対策
+                logger.warning(f"get_chat FileNotFoundError, retrying without formatting: {fnf_error}")
+                debug_print(f"WARNING: get_chat FileNotFoundError (retrying): {fnf_error}")
+                # message_formatsを明示的に指定してリトライ
+                chat = self.chat_downloader.get_chat(
+                    self.settings.url,
+                    timeout=30,
+                    message_groups=['messages']  # メッセージのみ取得
+                )
             
             debug_print(f"DEBUG: Chat downloader created for Twitch, starting message loop")
             
@@ -565,7 +598,17 @@ class TwitchCommentReceiver(CommentReceiver):
                         'is_moderator': is_moderator
                     }
                     
-                    self.callback(comment_data)
+                    # GUIコールバック（メインループが終了している場合はスキップ）
+                    try:
+                        if not self.stop_event.is_set():
+                            self.callback(comment_data)
+                    except Exception as callback_error:
+                        # メインループ終了時のエラーを無視
+                        if "main thread is not in main loop" in str(callback_error):
+                            logger.debug("Main loop already terminated, stopping receiver")
+                            break
+                        else:
+                            logger.error(f"Error in callback: {callback_error}")
                     
                 except KeyError as ke:
                     error_count += 1
@@ -580,12 +623,21 @@ class TwitchCommentReceiver(CommentReceiver):
                     
         except KeyboardInterrupt:
             debug_print(f"DEBUG: KeyboardInterrupt detected in Twitch receiver")
-            logger.info(f"Twitch receiver interrupted by user")
+            logger.info(f"Twitch receiver interrupted by KeyboardInterrupt")
+        except SystemExit as e:
+            debug_print(f"DEBUG: SystemExit detected in Twitch receiver: {e}")
+            logger.warning(f"Twitch receiver received SystemExit: {e}")
+        except FileNotFoundError as fnf_error:
+            # custom_formats.jsonが見つからない場合の最終フォールバック
+            logger.error(f"Twitch receiver FileNotFoundError: {fnf_error}")
+            debug_print(f"ERROR: Twitch receiver FileNotFoundError: {fnf_error}")
+            logger.error("This may occur when running as a compiled executable. Try running as .pyw file instead.")
         except Exception as e:
             logger.error(f"Twitch comment receiver error: {e}")
             debug_print(f"ERROR: Twitch receiver error: {e}")
             import traceback
             debug_print(f"ERROR: Traceback: {traceback.format_exc()}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
         finally:
             debug_print(f"DEBUG: Twitch receiver cleanup")
 
@@ -633,7 +685,20 @@ class StreamManager:
             
         debug_print(f"DEBUG: Created receiver, starting thread")
         self.receivers[stream_id] = receiver
-        thread = threading.Thread(target=receiver.start, daemon=True)
+        
+        # スレッドラッパー関数で例外をキャッチ
+        def thread_wrapper():
+            try:
+                logger.info(f"Comment receiver thread started for {stream_id}")
+                receiver.start()
+                logger.info(f"Comment receiver thread ended normally for {stream_id}")
+            except Exception as e:
+                logger.error(f"Comment receiver thread crashed for {stream_id}: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                # スレッドが異常終了してもメインアプリケーションは継続
+        
+        thread = threading.Thread(target=thread_wrapper, daemon=True)
         self.threads[stream_id] = thread
         thread.start()
         settings.is_active = True
@@ -691,6 +756,10 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             self.root.attributes('-topmost', True)
             
         self.setup_gui()
+        
+        # GUIセットアップ後にリクエストリストをロード
+        self.load_requests()
+        
         self.setup_obs()
         self.restore_last_streams()
         
@@ -707,6 +776,10 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         for url in self.global_settings.last_streams:
             platform = self.detect_platform(url)
             if platform:
+                # YouTube URLの場合は通常形式に正規化
+                if platform == 'youtube':
+                    url = self.normalize_youtube_url(url)
+                
                 # プラットフォームごとの連番IDを生成
                 stream_id = f"{platform}_{self.stream_id_counters[platform]}"
                 self.stream_id_counters[platform] += 1
@@ -735,6 +808,41 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         elif 'twitch.tv' in url:
             return 'twitch'
         return None
+    
+    def normalize_youtube_url(self, url):
+        """YouTube URLを通常の視聴URL形式に正規化
+        
+        YouTube Studio URL → 通常の視聴URL に変換
+        例: https://studio.youtube.com/video/VIDEO_ID/livestreaming
+            → https://www.youtube.com/watch?v=VIDEO_ID
+        
+        Args:
+            url (str): YouTube URL（任意の形式）
+            
+        Returns:
+            str: 正規化されたURL（通常の視聴URL形式）
+        """
+        # YouTube Studio URLの場合
+        if 'studio.youtube.com/video/' in url:
+            # video_idを抽出
+            parts = url.split('/video/')
+            if len(parts) > 1:
+                video_id = parts[1].split('/')[0].split('?')[0]
+                # 通常の視聴URL形式に変換
+                return f'https://www.youtube.com/watch?v={video_id}'
+        
+        # youtu.be 短縮URL の場合
+        elif 'youtu.be/' in url:
+            video_id = url.split('/')[-1].split('?')[0]
+            return f'https://www.youtube.com/watch?v={video_id}'
+        
+        # youtube.com/live/ の場合
+        elif 'youtube.com/live/' in url:
+            video_id = url.split('/live/')[-1].split('?')[0]
+            return f'https://www.youtube.com/watch?v={video_id}'
+        
+        # 既に通常形式（youtube.com/watch?v=）の場合はそのまま返す
+        return url
     
     def get_stream_title(self, platform, url):
         """配信タイトルを取得
@@ -771,15 +879,6 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         
         # BeautifulSoupでスクレイピング（YouTubeまたはTwitch APIのフォールバック）
         try:
-            # YouTube StudioのURLの場合は通常の視聴URLに変換
-            if platform == 'youtube' and 'studio.youtube.com/video/' in url:
-                # video_idを抽出
-                parts = url.split('/video/')
-                if len(parts) > 1:
-                    video_id = parts[1].split('/')[0].split('?')[0]
-                    # 通常の視聴URLに変換
-                    url = f'https://www.youtube.com/watch?v={video_id}'
-            
             # User-Agentヘッダーを設定（ブロック回避）
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -989,6 +1088,11 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             messagebox.showerror(self.strings["messages"]["error"], self.strings["messages"]["unsupported_url"])
             return
         
+        # YouTube URLの場合は通常形式に正規化
+        if platform == 'youtube':
+            url = self.normalize_youtube_url(url)
+            logger.info(f"YouTube URL normalized: {url}")
+        
         # URL重複チェック
         for existing_stream in self.stream_manager.streams.values():
             if existing_stream.url == url:
@@ -1137,6 +1241,9 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             self.update_request_display()
             self.generate_xml()
             self.manual_req_entry.delete(0, tk.END)
+            
+            # 自動保存
+            self.save_requests()
     
     def remove_selected_request(self):
         """選択されたリクエストを削除"""
@@ -1149,6 +1256,9 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
                 self.common_requests.pop(index)
                 self.update_request_display()
                 self.generate_xml()
+                
+                # 自動保存
+                self.save_requests()
     
     def move_request_up(self):
         """選択されたリクエストを上に移動"""
@@ -1166,6 +1276,9 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
                 new_index = index - 1
                 if new_index < len(self.request_tree.get_children()):
                     self.request_tree.selection_set(self.request_tree.get_children()[new_index])
+                
+                # 自動保存
+                self.save_requests()
     
     def move_request_down(self):
         """選択されたリクエストを下に移動"""
@@ -1183,6 +1296,9 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
                 new_index = index + 1
                 if new_index < len(self.request_tree.get_children()):
                     self.request_tree.selection_set(self.request_tree.get_children()[new_index])
+                
+                # 自動保存
+                self.save_requests()
     
     def clear_all_requests(self):
         """全リクエストをクリア"""
@@ -1193,6 +1309,9 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             self.common_requests.clear()
             self.update_request_display()
             self.generate_xml()
+            
+            # 自動保存
+            self.save_requests()
             
     def clear_all_comments(self):
         """全コメントをクリア"""
@@ -1248,24 +1367,107 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         text = text.replace("'", '&apos;')
         return text
     
+    def generate_todo_xml(self, filename='todo.xml'):
+        """リクエストリストをXML形式でファイルに出力（Ajax用）
+        
+        Args:
+            filename (str): 出力先ファイル名
+        """
+        try:
+            # XML宣言とルート要素
+            xml_lines = ['<?xml version="1.0" encoding="utf-8"?>']
+            xml_lines.append('<TODOs>')
+            
+            # 各リクエストをXML要素として追加
+            for index, req in enumerate(self.common_requests, start=1):
+                content = req.get('content', '')
+                author = req.get('author', '')
+                platform = req.get('platform', '')
+                
+                # XMLエスケープ
+                content_escaped = self.escape_for_xml(content)
+                author_escaped = self.escape_for_xml(author)
+                platform_escaped = self.escape_for_xml(platform)
+                
+                xml_lines.append('<item>')
+                xml_lines.append(f'    <idx>{index}</idx>')
+                xml_lines.append(f'    <title>{content_escaped}</title>')
+                xml_lines.append(f'    <name>{author_escaped}</name>')
+                xml_lines.append(f'    <platform>{platform_escaped}</platform>')
+                xml_lines.append('</item>')
+            
+            xml_lines.append('</TODOs>')
+            
+            # ファイルに書き込み
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(xml_lines))
+            
+            logger.debug(f"TODO XML generated: {filename} ({len(self.common_requests)} items)")
+            
+        except Exception as e:
+            logger.error(f"Failed to generate TODO XML: {e}")
+    
     def on_closing(self):
         """アプリケーション終了時の処理"""
-        # 現在開いている配信のURLを保存
-        active_urls = []
+        # すべての配信のURLを保存（受信中かどうかに関わらず）
+        all_urls = []
         for stream_id, settings in self.stream_manager.streams.items():
-            if settings.is_active:
-                active_urls.append(settings.url)
-        self.global_settings.last_streams = active_urls
+            all_urls.append(settings.url)
+        self.global_settings.last_streams = all_urls
         
-        # 全配信を停止
+        # 全配信を停止（各ストリームで最大3秒待機してスレッド終了を確認）
+        logger.info("Stopping all streams before closing...")
         for stream_id in list(self.stream_manager.streams.keys()):
             self.stream_manager.stop_stream(stream_id)
-            
+        
+        # リクエストリストを保存
+        self.save_requests()
+        
         # 設定保存
         self.global_settings.save()
         
         # ウィンドウを閉じる
+        logger.info("Application closing")
         self.root.destroy()
+    
+    def save_requests(self, filename='requests.json'):
+        """リクエストリストをファイルに保存
+        
+        Args:
+            filename (str): 保存先ファイル名
+        """
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(self.common_requests, f, indent=2, ensure_ascii=False)
+            logger.info(f"Requests saved: {len(self.common_requests)} items")
+        except Exception as e:
+            logger.error(f"Failed to save requests: {e}")
+    
+    def load_requests(self, filename='requests.json'):
+        """リクエストリストをファイルから読み込み
+        
+        Args:
+            filename (str): 読み込み元ファイル名
+        """
+        if not os.path.exists(filename):
+            logger.info(f"Request file not found: {filename} (starting with empty list)")
+            return
+        
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                self.common_requests = json.load(f)
+            logger.info(f"Requests loaded: {len(self.common_requests)} items")
+            
+            # GUIが初期化されていれば表示を更新
+            if hasattr(self, 'request_tree'):
+                self.update_request_display()
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse request file: {e}")
+            self.common_requests = []
+        except Exception as e:
+            logger.error(f"Failed to load requests: {e}")
+            self.common_requests = []
     
     def change_language(self, lang_code):
         """言語を変更
@@ -1286,16 +1488,35 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
     def run(self):
         """アプリケーションを実行"""
         try:
+            logger.info("Application starting mainloop")
             self.root.mainloop()
+            logger.info("Mainloop ended normally")
         except KeyboardInterrupt:
-            logger.info("Application interrupted by user")
+            logger.info("Application interrupted by user (KeyboardInterrupt)")
+            self.on_closing()
+        except Exception as e:
+            logger.error(f"Unexpected error in mainloop: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             self.on_closing()
 
 if __name__ == '__main__':
+    import signal
+    
+    # SIGINTハンドラー（Ctrl+C対策）
+    def signal_handler(sig, frame):
+        logger.info(f"Signal {sig} received, ignoring...")
+        # 何もしない - ユーザーがウィンドウを閉じるまで動作継続
+    
+    # SIGINTを無視（Windowsでのコンソール終了を防ぐ）
+    signal.signal(signal.SIGINT, signal_handler)
+    
     try:
         app = MultiStreamCommentHelper()
         app.run()
     except KeyboardInterrupt:
-        print("Application interrupted by user")
-        import sys
-        sys.exit(0)
+        logger.info("Application interrupted by KeyboardInterrupt in main")
+    except Exception as e:
+        logger.error(f"Fatal error in main: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
