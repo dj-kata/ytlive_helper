@@ -18,7 +18,6 @@ import socket
 
 # コメント取得ライブラリ
 import pytchat  # YouTube用
-from chat_downloader import ChatDownloader  # Twitch用
 
 from obssocket import OBSSocket
 
@@ -507,119 +506,162 @@ class YouTubeCommentReceiver(CommentReceiver):
 
 
 class TwitchCommentReceiver(CommentReceiver):
-    """Twitchコメント受信クラス（chat-downloader使用）"""
+    """Twitchコメント受信クラス（標準ライブラリのsocketでIRC接続）"""
     def __init__(self, settings, callback, global_settings):
         super().__init__(settings)
         self.callback = callback
         self.global_settings = global_settings
-        self.chat_downloader = None
+        self.irc_socket = None
+        self.channel_name = None
+        
+    def extract_channel_name(self, url):
+        """TwitchのURLからチャンネル名を抽出"""
+        # https://www.twitch.tv/channel_name -> channel_name
+        import re
+        match = re.search(r'twitch\.tv/([^/\?]+)', url)
+        if match:
+            return match.group(1).lower()  # チャンネル名は小文字
+        return None
         
     def start(self):
-        """chat-downloaderを使ったコメント受信（FileNotFoundError対策付き）"""
+        """socketを使ったTwitch IRC接続でコメント受信"""
         try:
             debug_print(f"DEBUG: TwitchCommentReceiver.start() called")
             debug_print(f"DEBUG: URL: {self.settings.url}")
             
-            # chat-downloaderでチャットを取得
-            # FileNotFoundError対策: message_formatsを無効化
-            try:
-                self.chat_downloader = ChatDownloader()
-            except FileNotFoundError as fnf_error:
-                # custom_formats.jsonが見つからない場合は警告を出して継続
-                logger.warning(f"ChatDownloader initialization warning: {fnf_error}")
-                debug_print(f"WARNING: ChatDownloader FileNotFoundError (continuing anyway): {fnf_error}")
-                self.chat_downloader = ChatDownloader()
+            # URLからチャンネル名を抽出
+            self.channel_name = self.extract_channel_name(self.settings.url)
+            if not self.channel_name:
+                logger.error(f"Failed to extract channel name from URL: {self.settings.url}")
+                return
             
-            # タイムアウト設定でチャットを取得
-            try:
-                chat = self.chat_downloader.get_chat(
-                    self.settings.url,
-                    timeout=30  # 接続タイムアウト（秒）
-                )
-            except FileNotFoundError as fnf_error:
-                # get_chat内でのFileNotFoundError対策
-                logger.warning(f"get_chat FileNotFoundError, retrying without formatting: {fnf_error}")
-                debug_print(f"WARNING: get_chat FileNotFoundError (retrying): {fnf_error}")
-                # message_formatsを明示的に指定してリトライ
-                chat = self.chat_downloader.get_chat(
-                    self.settings.url,
-                    timeout=30,
-                    message_groups=['messages']  # メッセージのみ取得
-                )
+            debug_print(f"DEBUG: Extracted channel name: {self.channel_name}")
             
-            debug_print(f"DEBUG: Chat downloader created for Twitch, starting message loop")
+            # Twitch IRC設定
+            server = 'irc.chat.twitch.tv'
+            port = 6667
+            nickname = 'justinfan12345'  # 匿名接続用のニックネーム（justinfan + 数字）
+            
+            # IRCソケット作成
+            self.irc_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.irc_socket.settimeout(300)  # 5分のタイムアウト
+            
+            debug_print(f"DEBUG: Connecting to Twitch IRC: {server}:{port}")
+            self.irc_socket.connect((server, port))
+            
+            # IRC接続
+            self.irc_socket.send(f"NICK {nickname}\r\n".encode('utf-8'))
+            self.irc_socket.send(f"JOIN #{self.channel_name}\r\n".encode('utf-8'))
+            
+            # タグを有効化（ユーザー情報を取得するため）
+            self.irc_socket.send(b"CAP REQ :twitch.tv/tags\r\n")
+            self.irc_socket.send(b"CAP REQ :twitch.tv/commands\r\n")
+            
+            debug_print(f"DEBUG: Connected to Twitch IRC, joined channel: {self.channel_name}")
             
             message_count = 0
-            error_count = 0
-            max_errors = 10  # 連続エラー上限
+            buffer = ""
             
-            for message in chat:
-                # 停止フラグチェック
-                if self.stop_event.is_set():
-                    debug_print(f"DEBUG: Stop event detected, breaking loop")
-                    break
-                
-                # 連続エラーが多すぎる場合は停止
-                if error_count >= max_errors:
-                    debug_print(f"ERROR: Too many consecutive errors ({error_count}), stopping")
-                    break
-                
+            # メッセージ受信ループ
+            while not self.stop_event.is_set():
                 try:
-                    # メッセージをパース
-                    author_name = message.get('author', {}).get('name', 'Unknown')
-                    author_id = message.get('author', {}).get('id', author_name)
-                    message_text = message.get('message', '')
-                    timestamp = message.get('time_text', '')
+                    # データ受信
+                    response = self.irc_socket.recv(2048).decode('utf-8', errors='ignore')
                     
-                    message_count += 1
-                    error_count = 0  # 成功したのでエラーカウントをリセット
+                    if not response:
+                        debug_print("DEBUG: Connection closed by server")
+                        break
                     
-                    if message_count % 10 == 0:
-                        debug_print(f"DEBUG: Received {message_count} Twitch messages")
+                    buffer += response
+                    lines = buffer.split('\r\n')
+                    buffer = lines.pop()  # 最後の不完全な行は次回へ
                     
-                    # 管理者判定
-                    is_moderator = False
-                    for manager in self.global_settings.managers:
-                        if manager['platform'] == 'twitch' and manager['id'] == author_id:
-                            is_moderator = True
-                            break
+                    for line in lines:
+                        if not line:
+                            continue
+                        
+                        # PINGに応答
+                        if line.startswith('PING'):
+                            self.irc_socket.send(b"PONG :tmi.twitch.tv\r\n")
+                            continue
+                        
+                        # PRIVMSGメッセージを解析
+                        if 'PRIVMSG' in line:
+                            message_count += 1
+                            
+                            if message_count % 10 == 0:
+                                debug_print(f"DEBUG: Received {message_count} Twitch messages")
+                            
+                            # メッセージをパース
+                            author_name = None
+                            message_text = None
+                            is_moderator = False
+                            
+                            # タグからユーザー情報を抽出
+                            if line.startswith('@'):
+                                tags_part, rest = line.split(' :', 1)
+                                tags = {}
+                                for tag in tags_part[1:].split(';'):
+                                    if '=' in tag:
+                                        key, value = tag.split('=', 1)
+                                        tags[key] = value
+                                
+                                # display-nameまたはloginからユーザー名を取得
+                                author_name = tags.get('display-name') or tags.get('login')
+                                
+                                # モデレーター判定
+                                badges = tags.get('badges', '')
+                                if 'moderator/' in badges or 'broadcaster/' in badges:
+                                    is_moderator = True
+                            
+                            # ユーザー名が取得できなかった場合は通常のIRC形式から抽出
+                            if not author_name:
+                                if '!' in line:
+                                    author_name = line.split('!')[0].lstrip(':@')
+                            
+                            # メッセージテキストを抽出
+                            if f'PRIVMSG #{self.channel_name} :' in line:
+                                message_text = line.split(f'PRIVMSG #{self.channel_name} :', 1)[1]
+                            
+                            if not author_name or not message_text:
+                                continue
+                            
+                            # global_settingsの管理者リストでチェック
+                            for manager in self.global_settings.managers:
+                                if manager['platform'] == 'twitch' and manager['id'].lower() == author_name.lower():
+                                    is_moderator = True
+                                    break
+                            
+                            # 統一フォーマットでコールバック
+                            comment_data = {
+                                'platform': 'twitch',
+                                'author': author_name,
+                                'message': message_text,
+                                'timestamp': '',
+                                'author_id': author_name.lower(),
+                                'is_moderator': is_moderator
+                            }
+                            
+                            # GUIコールバック
+                            try:
+                                if not self.stop_event.is_set():
+                                    self.callback(comment_data)
+                            except Exception as callback_error:
+                                if "main thread is not in main loop" in str(callback_error):
+                                    logger.debug("Main loop already terminated, stopping receiver")
+                                    break
+                                else:
+                                    logger.error(f"Error in callback: {callback_error}")
                     
-                    # モデレーターバッジチェック
-                    if not is_moderator and message.get('author', {}).get('is_moderator', False):
-                        is_moderator = True
-                    
-                    # 統一フォーマットでコールバック
-                    comment_data = {
-                        'platform': 'twitch',
-                        'author': author_name,
-                        'message': message_text,
-                        'timestamp': timestamp,
-                        'author_id': author_id,
-                        'is_moderator': is_moderator
-                    }
-                    
-                    # GUIコールバック（メインループが終了している場合はスキップ）
-                    try:
-                        if not self.stop_event.is_set():
-                            self.callback(comment_data)
-                    except Exception as callback_error:
-                        # メインループ終了時のエラーを無視
-                        if "main thread is not in main loop" in str(callback_error):
-                            logger.debug("Main loop already terminated, stopping receiver")
-                            break
-                        else:
-                            logger.error(f"Error in callback: {callback_error}")
-                    
-                except KeyError as ke:
-                    error_count += 1
-                    debug_print(f"DEBUG: Missing key in Twitch message: {ke}")
-                    logger.warning(f"Missing key in message: {ke}")
-                except Exception as inner_e:
-                    error_count += 1
-                    debug_print(f"DEBUG: Error processing Twitch message: {inner_e}")
-                    logger.error(f"Error processing message: {inner_e}")
-                    
-            debug_print(f"DEBUG: Twitch message loop ended, total messages: {message_count}")
+                except socket.timeout:
+                    # タイムアウトは正常（PING/PONGで接続維持）
+                    continue
+                except Exception as e:
+                    debug_print(f"DEBUG: Error receiving IRC message: {e}")
+                    logger.error(f"Error receiving message: {e}")
+                    break
+            
+            debug_print(f"DEBUG: Twitch IRC loop ended, total messages: {message_count}")
                     
         except KeyboardInterrupt:
             debug_print(f"DEBUG: KeyboardInterrupt detected in Twitch receiver")
@@ -627,11 +669,6 @@ class TwitchCommentReceiver(CommentReceiver):
         except SystemExit as e:
             debug_print(f"DEBUG: SystemExit detected in Twitch receiver: {e}")
             logger.warning(f"Twitch receiver received SystemExit: {e}")
-        except FileNotFoundError as fnf_error:
-            # custom_formats.jsonが見つからない場合の最終フォールバック
-            logger.error(f"Twitch receiver FileNotFoundError: {fnf_error}")
-            debug_print(f"ERROR: Twitch receiver FileNotFoundError: {fnf_error}")
-            logger.error("This may occur when running as a compiled executable. Try running as .pyw file instead.")
         except Exception as e:
             logger.error(f"Twitch comment receiver error: {e}")
             debug_print(f"ERROR: Twitch receiver error: {e}")
@@ -639,6 +676,11 @@ class TwitchCommentReceiver(CommentReceiver):
             debug_print(f"ERROR: Traceback: {traceback.format_exc()}")
             logger.error(f"Traceback: {traceback.format_exc()}")
         finally:
+            if self.irc_socket:
+                try:
+                    self.irc_socket.close()
+                except:
+                    pass
             debug_print(f"DEBUG: Twitch receiver cleanup")
 
 
@@ -676,7 +718,7 @@ class StreamManager:
             debug_print(f"DEBUG: Creating YouTubeCommentReceiver (pytchat)")
             receiver = YouTubeCommentReceiver(settings, comment_callback, self.global_settings)
         elif settings.platform == 'twitch':
-            debug_print(f"DEBUG: Creating TwitchCommentReceiver (chat-downloader)")
+            debug_print(f"DEBUG: Creating TwitchCommentReceiver (socket IRC)")
             receiver = TwitchCommentReceiver(settings, comment_callback, self.global_settings)
         else:
             logger.error(f"Unknown platform: {settings.platform}")
