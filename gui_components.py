@@ -972,7 +972,7 @@ class GUIComponents:
         """設定ダイアログを表示"""
         settings_window = tk.Toplevel(self.root)
         settings_window.title(self.strings["settings"]["title"])
-        settings_window.geometry("600x600")
+        settings_window.geometry("700x850")
         settings_window.transient(self.root)
         settings_window.grab_set()
         

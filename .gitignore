@@ -8,3 +8,4 @@ dbg.log
 nuitka-crash-report.xml
 config_secret.py
 twitch_config.json
+ytlive_helper/*
