@@ -1242,7 +1242,7 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
                         return ""
                     
                     # マーカーの次の行を抽出
-                    lines = description.split('\n')
+                    lines = description.split('\\n')
                     for i, line in enumerate(lines):
                         if content_marker in line:
                             # 次の行が存在するかチェック
