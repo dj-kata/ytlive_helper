@@ -1600,12 +1600,16 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             # StreamManagerから削除
             self.stream_manager.remove_stream(stream_id)
             
-            # タブを削除（notebook内の対応するタブを探して削除）
-            for i in range(self.notebook.index("end")):
-                tab_text = self.notebook.tab(i, "text")
-                if stream_id in tab_text:
-                    self.notebook.forget(i)
-                    break
+            # 選択中の配信がこれだった場合はクリア
+            if self.selected_stream_id == stream_id:
+                self.selected_stream_id = None
+                # 他の配信があれば最初のものを選択
+                if self.stream_manager.streams:
+                    first_stream_id = next(iter(self.stream_manager.streams.keys()))
+                    self.update_selected_stream_info(first_stream_id)
+                else:
+                    # 配信がない場合は情報をクリア
+                    self.update_selected_stream_info(None)
             
             # リストを更新
             self.update_stream_list()
@@ -1620,7 +1624,11 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             return
             
         item = self.stream_tree.item(selection[0])
-        stream_id = item['values'][0]
+        # タグからstream_idを取得（タグの2番目がstream_id）
+        tags = item['tags']
+        stream_id = tags[1] if len(tags) > 1 else None
+        if not stream_id:
+            return
         
         # 設定ダイアログを開く
         self.show_stream_settings(stream_id)
