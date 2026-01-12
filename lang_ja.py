@@ -217,4 +217,10 @@ STRINGS = {
         "add_push_word_prompt": "リクエスト追加ワードを入力:",
         "add_pull_word_prompt": "リクエスト削除ワードを入力:",
     },
+
+    # デフォルト設定
+    'default_settings': {
+        'announcement':'配信開始しました！',
+        'content_marker':'■今日の内容',
+    }
 }

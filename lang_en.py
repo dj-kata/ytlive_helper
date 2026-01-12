@@ -217,4 +217,10 @@ STRINGS = {
         "add_push_word_prompt": "Enter request add word:",
         "add_pull_word_prompt": "Enter request remove word:",
     },
+
+    # デフォルト設定
+    'default_settings': {
+        'announcement':'Streaming has started!',
+        'content_marker':"■Contents",
+    }
 }

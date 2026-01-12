@@ -698,40 +698,40 @@ class GUIComponents:
     def show_announcement_dialog(self):
         """告知ダイアログを表示"""
         if not self.stream_manager.streams:
-            messagebox.showwarning("警告", "配信が登録されていません。")
+            messagebox.showwarning(self.strings['messages']['warning'], self.strings['announcement']['warning_no_streams'])
             return
         
         # ダイアログ作成
         dialog = tk.Toplevel(self.root)
-        dialog.title("配信告知")
+        dialog.title(self.strings['announcement']['dialog_title'])
         dialog.geometry("700x700")
         dialog.transient(self.root)
         dialog.grab_set()
         
         # 告知内容フレーム
-        content_frame = ttk.LabelFrame(dialog, text="告知内容")
+        content_frame = ttk.LabelFrame(dialog, text=self.strings['announcement']['content_frame'])
         content_frame.pack(fill=tk.X, padx=10, pady=10)
         
         # 入力エリア（編集可能）
-        input_label = ttk.Label(content_frame, text="基本の告知文:")
+        input_label = ttk.Label(content_frame, text=self.strings['announcement']['basic_text_label'])
         input_label.pack(anchor=tk.W, padx=10, pady=(10, 5))
         
         input_text_widget = tk.Text(content_frame, height=3, width=60, wrap=tk.WORD)
         input_text_widget.pack(fill=tk.X, padx=10, pady=(0, 10))
         
         # 保存されている告知テンプレートを読み込む（存在しない場合はデフォルト値）
-        template = getattr(self.global_settings, 'announcement_template', '配信開始しました！')
+        template = getattr(self.global_settings, 'announcement_template', self.strings['default_settings']['announcement'])
         input_text_widget.insert("1.0", template)
         
         # プレビューエリア（読み取り専用）
-        preview_label = ttk.Label(content_frame, text="プレビュー（実際に投稿される内容）:")
+        preview_label = ttk.Label(content_frame, text=self.strings['announcement']['preview_label'])
         preview_label.pack(anchor=tk.W, padx=10, pady=(10, 5))
         
         preview_text_widget = tk.Text(content_frame, height=8, width=60, wrap=tk.WORD, state=tk.DISABLED)
         preview_text_widget.pack(fill=tk.X, padx=10, pady=(0, 10))
         
         # 配信選択フレーム
-        stream_select_frame = ttk.LabelFrame(dialog, text="配信選択")
+        stream_select_frame = ttk.LabelFrame(dialog, text=self.strings['announcement']['stream_select_frame'])
         stream_select_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         
         # Treeview作成（チェックボックス + ラジオボタン風）
@@ -742,11 +742,11 @@ class GUIComponents:
         tree = ttk.Treeview(tree_frame, columns=columns, show='headings', height=6)
         
         # カラム設定
-        tree.heading("include", text="告知に含める")
-        tree.heading("source", text="基本情報取得元")
-        tree.heading("stream_id", text="配信ID")
-        tree.heading("platform", text="Platform")
-        tree.heading("title", text="タイトル")
+        tree.heading("include",   text=self.strings['announcement']['include_column'])
+        tree.heading("source",    text=self.strings['announcement']['source_column'])
+        tree.heading("stream_id", text=self.strings['columns']['stream_id'])
+        tree.heading("platform",  text=self.strings['columns']['platform'])
+        tree.heading("title",     text=self.strings['columns']['title'])
         
         tree.column("include", width=100, anchor="center")
         tree.column("source", width=120, anchor="center")
@@ -778,7 +778,7 @@ class GUIComponents:
             include_mark = "✓" if stream_states[stream_id]['include'] else ""
             source_mark = "●" if stream_states[stream_id]['source'] and obs_configured else ""
             if stream_states[stream_id]['source'] and not obs_configured:
-                source_mark = "（OBS未設定）"
+                source_mark = self.strings['announcement']['obs_not_configured']
             
             title_display = settings.title[:40] + "..." if len(settings.title) > 40 else settings.title
             
@@ -855,9 +855,9 @@ class GUIComponents:
         
         # 説明ラベル
         if not obs_configured:
-            help_text = "※ 基本情報取得元を設定するには、OBS設定を完了してください"
+            help_text = self.strings['announcement']['help_text_not_configured']
         else:
-            help_text = "※ 「告知に含める」: クリックでON/OFF\n※ 「基本情報取得元」: クリックで選択（OBS送信用）"
+            help_text = self.strings['announcement']['help_text_configured']
         
         help_label = ttk.Label(stream_select_frame, text=help_text, foreground="gray", font=('TkDefaultFont', 8))
         help_label.pack(padx=10, pady=(0, 10))
@@ -888,7 +888,7 @@ class GUIComponents:
                     source_stream_id = stream_id
             
             if not included_streams:
-                messagebox.showwarning("警告", "告知に含める配信を少なくとも1つ選択してください。")
+                messagebox.showwarning(self.strings['messages']['warning'], self.strings['announcement']['warning_no_selection'])
                 return
             
             # ツイート本文を構築
@@ -919,7 +919,7 @@ class GUIComponents:
                 # 配信内容を取得
                 today_content = ""
                 try:
-                    content_marker = getattr(self.global_settings, 'content_marker', '今日の内容:')
+                    content_marker = getattr(self.global_settings, 'content_marker', self.strings['default_settings']['content_marker'])
                     today_content = self.get_today_content(
                         source_settings.platform,
                         source_settings.url,
@@ -965,8 +965,8 @@ class GUIComponents:
         def on_cancel():
             dialog.destroy()
         
-        ttk.Button(button_frame, text="告知ツイート", command=on_ok).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(button_frame, text="キャンセル", command=on_cancel).pack(side=tk.RIGHT)
+        ttk.Button(button_frame, text=self.strings['announcement']['tweet_button'], command=on_ok).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text=self.strings['announcement']['cancel_button'], command=on_cancel).pack(side=tk.RIGHT)
         
         # ダイアログを中央に配置
         dialog.update_idletasks()
@@ -1029,27 +1029,27 @@ class GUIComponents:
                        variable=debug_enabled_var).pack(anchor=tk.W, padx=10, pady=5)
         
         # タイトル抽出設定
-        title_extract_frame = ttk.LabelFrame(obs_frame, text="タイトル抽出設定")
+        title_extract_frame = ttk.LabelFrame(obs_frame, text=self.strings['title_extraction']['frame_title'])
         title_extract_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         
         # シリーズパターン設定
         series_pattern_frame = ttk.Frame(title_extract_frame)
         series_pattern_frame.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(series_pattern_frame, text="シリーズパターン:").pack(side=tk.LEFT)
+        ttk.Label(series_pattern_frame, text=self.strings['title_extraction']['series_help']).pack(side=tk.LEFT)
         pattern_series_var = tk.StringVar(value=self.global_settings.pattern_series)
         series_entry = ttk.Entry(series_pattern_frame, textvariable=pattern_series_var, width=30)
         series_entry.pack(side=tk.LEFT, padx=(5, 0))
         
         # ヘルプラベル
         series_help = ttk.Label(title_extract_frame, 
-                               text="例: '#[number]' → #290、'第[number]回' → 第10回",
+                               text=self.strings['title_extraction']['series_help'],
                                foreground="gray", font=('TkDefaultFont', 8))
         series_help.pack(anchor=tk.W, padx=10, pady=(0, 5))
         
         # base_title除外パターン設定
         base_pattern_label_frame = ttk.Frame(title_extract_frame)
         base_pattern_label_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
-        ttk.Label(base_pattern_label_frame, text="base_title除外パターン:").pack(side=tk.LEFT)
+        ttk.Label(base_pattern_label_frame, text=self.strings['title_extraction']['base_pattern_label']).pack(side=tk.LEFT)
         
         # リストボックス
         base_pattern_list_frame = ttk.Frame(title_extract_frame)
@@ -1072,7 +1072,7 @@ class GUIComponents:
         base_pattern_button_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
         
         def add_base_pattern():
-            pattern = simpledialog.askstring("パターン追加", "除外するパターンを入力してください\n例: 【】, [], (), 「」")
+            pattern = simpledialog.askstring(self.strings['title_extraction']['pattern_dialog_title'], self.strings['title_extraction']['pattern_dialog_prompt'])
             if pattern and pattern not in self.global_settings.pattern_base_title_list:
                 self.global_settings.pattern_base_title_list.append(pattern)
                 base_pattern_listbox.insert(tk.END, pattern)
@@ -1084,12 +1084,12 @@ class GUIComponents:
                 self.global_settings.pattern_base_title_list.pop(index)
                 base_pattern_listbox.delete(index)
         
-        ttk.Button(base_pattern_button_frame, text="追加", command=add_base_pattern).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(base_pattern_button_frame, text="削除", command=remove_base_pattern).pack(side=tk.LEFT)
+        ttk.Button(base_pattern_button_frame, text=self.strings['title_extraction']['add_button'], command=add_base_pattern).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(base_pattern_button_frame, text=self.strings['title_extraction']['delete_button'], command=remove_base_pattern).pack(side=tk.LEFT)
         
         # ヘルプラベル
         base_help = ttk.Label(title_extract_frame, 
-                             text="例: 【】 → 【あけおめ】を削除、[] → [雑談]を削除",
+                             text=self.strings['title_extraction']['base_pattern_help'],
                              foreground="gray", font=('TkDefaultFont', 8))
         base_help.pack(anchor=tk.W, padx=10, pady=(0, 10))
         
