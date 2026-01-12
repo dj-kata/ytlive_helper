@@ -1428,9 +1428,9 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
                     pass
             
             self.obs = OBSSocket(
-                host=self.global_settings.obs_host,
-                port=self.global_settings.obs_port,
-                password=self.global_settings.obs_passwd
+                self.global_settings.obs_host,
+                self.global_settings.obs_port,
+                self.global_settings.obs_passwd
             )
             logger.info(f"OBS connected: {self.global_settings.obs_host}:{self.global_settings.obs_port}")
         except Exception as e:

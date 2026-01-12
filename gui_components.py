@@ -934,6 +934,12 @@ class GUIComponents:
                 print(f"  base_title: {base_title}")
                 print(f"  series: {series}")
                 print(f"  today_content: {today_content}")
+
+                self.setup_obs()
+                if self.obs:
+                    self.obs.change_text('ythSeriesNum', series)
+                    self.obs.change_text('ythMainTitle', base_title)
+                    self.obs.change_text('ythTodayContent', today_content)
             
             print(f"\n【生成されたツイート本文】")
             print(tweet_text)

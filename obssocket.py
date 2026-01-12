@@ -22,7 +22,7 @@ hdl.setFormatter(hdl_formatter)
 logger.addHandler(hdl)
 
 class OBSSocket():
-    def __init__(self,hostIP,portNum,passWord,inf_source,dst_screenshot):
+    def __init__(self,hostIP,portNum,passWord,inf_source=None,dst_screenshot=None):
         self.host = hostIP
         self.port = portNum
         self.passwd = passWord
@@ -76,6 +76,7 @@ class OBSSocket():
 
     def change_text(self, source, text):
         try:
+            logger.debug(source, text)
             res = self.ws.set_input_settings(source, {'text':text}, True)
         except Exception:
             logger.debug(traceback.format_exc())
