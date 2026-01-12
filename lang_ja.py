@@ -196,7 +196,7 @@ STRINGS = {
         "start_failed": "配信 {stream_id} の開始に失敗しました",
         "stopped_stream": "配信 {stream_id} を停止しました",
         "url_updated": "URLを更新しました。",
-        "url_updated_running": "URLを更新しました。\n\n配信が実行中です。変更を反映するには、一度停止して再度開始してください。",
+        "url_updated_running": "URLを変更しました。\n受信を停止しました。\n\n新しいURL: {new_url}...",
         "invalid_port": "正しいport番号を入力してください",
         "debug_restart_required": "デバッグ設定の変更を反映するには、アプリケーションを再起動してください。",
         "clear_requests_confirm": "全てのリクエストをクリアしますか？",

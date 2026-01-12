@@ -687,7 +687,7 @@ class GUIComponents:
             if was_active:
                 messagebox.showinfo(
                     self.strings["messages"]["info"], 
-                    f"URLを変更しました。\n受信を停止しました。\n\n新しいURL: {new_url[:50]}..."
+                    self.strings["messages"]["url_updated_running"].format(new_url=new_url[:50])
                 )
             else:
                 messagebox.showinfo(

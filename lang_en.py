@@ -196,7 +196,7 @@ STRINGS = {
         "start_failed": "Failed to start stream {stream_id}",
         "stopped_stream": "Stopped stream {stream_id}",
         "url_updated": "URL updated.",
-        "url_updated_running": "URL updated.\n\nThe stream is currently running. Please stop and restart to apply changes.",
+        "url_updated_running": "URL was updated and receiving thread has been stopped.\n\nNew URL: {new_url}...",
         "invalid_port": "Please enter a valid port number",
         "debug_restart_required": "Please restart the application to apply debug setting changes.",
         "clear_requests_confirm": "Clear all requests?",
