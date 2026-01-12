@@ -38,9 +38,9 @@ class CommentHandler:
         # GUI更新（共通コメント表示エリア）
         self.update_comment_display(comment_data)
         
-        # 配信タブのコメント数を更新
-        if hasattr(settings, 'comment_count_label'):
-            settings.comment_count_label.config(text=str(len(settings.comments)))
+        # 選択中の配信情報を更新（コメント数）
+        if self.selected_stream_id == stream_id:
+            self.update_selected_stream_info(stream_id)
         
         # リクエスト処理
         self.process_request_commands(stream_id, comment_data)
@@ -59,7 +59,36 @@ class CommentHandler:
         else:
             time_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
-        # Treeviewに追加（tagsに author_id と platform を格納）
+        # タグを判定（優先順位: request_add > request_delete > platform別）
+        message = comment_data['message']
+        platform = comment_data['platform']
+        tag = None
+        
+        # リクエスト追加ワードチェック（最優先）
+        for pushword in self.global_settings.pushwords:
+            if message.startswith(pushword):
+                tag = 'request_add'
+                break
+        
+        # リクエスト削除ワードチェック（2番目の優先度）
+        if not tag:
+            for pullword in self.global_settings.pullwords:
+                if pullword in message:
+                    tag = 'request_delete'
+                    break
+        
+        # プラットフォーム別（最後の優先度）
+        if not tag:
+            if platform == 'twitch':
+                tag = 'platform_twitch'
+            elif platform == 'youtube':
+                tag = 'platform_youtube'
+        
+        # Treeviewに追加（タグを設定）
+        tags = (comment_data.get('author_id', ''), platform)
+        if tag:
+            tags = tags + (tag,)
+        
         self.comment_tree.insert('', tk.END, 
             values=(
                 comment_data['author'],
@@ -68,7 +97,7 @@ class CommentHandler:
                 comment_data['platform'],
                 time_str
             ),
-            tags=(comment_data.get('author_id', ''), comment_data['platform'])
+            tags=tags
         )
         
         # 自動スクロール

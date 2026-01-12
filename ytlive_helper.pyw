@@ -1209,7 +1209,7 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
                     return ""
                 
                 # タグのテキストを改行で分割してマーカーの次の行を取得
-                lines = target.text.split('\n')
+                lines = target.text.split('\\n')
                 for i, line in enumerate(lines):
                     if content_marker in line:
                         # 次の行が存在するかチェック
