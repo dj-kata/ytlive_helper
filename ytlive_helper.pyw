@@ -1022,7 +1022,7 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
                     url = self.normalize_youtube_url(url)
                 
                 # プラットフォームごとの連番IDを生成
-                stream_id = f"{platform}_{self.stream_id_counters[platform]}"
+                stream_id = f"{platform[:1]}{self.stream_id_counters[platform]}"
                 self.stream_id_counters[platform] += 1
                 
                 # 空のタイトルで即座に追加
@@ -1377,7 +1377,11 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             return
             
         item = self.stream_tree.item(selection[0])
-        stream_id = item['values'][0]
+        # タグからstream_idを取得（タグの2番目がstream_id）
+        tags = item['tags']
+        stream_id = tags[1] if len(tags) > 1 else None
+        if not stream_id:
+            return
         
         # タイトル更新
         self.update_stream_title(stream_id)
@@ -1390,7 +1394,11 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             return
         
         item = self.stream_tree.item(selection[0])
-        stream_id = item['values'][0]
+        # タグからstream_idを取得（タグの2番目がstream_id）
+        tags = item['tags']
+        stream_id = tags[1] if len(tags) > 1 else None
+        if not stream_id:
+            return
         
         # 配信設定を取得
         settings = self.stream_manager.streams.get(stream_id)
@@ -1499,7 +1507,11 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             return
             
         item = self.stream_tree.item(selection[0])
-        stream_id = item['values'][0]
+        # タグからstream_idを取得（タグの2番目がstream_id）
+        tags = item['tags']
+        stream_id = tags[1] if len(tags) > 1 else None
+        if not stream_id:
+            return
         
         # コメント受信開始
         def comment_callback(comment_data):
@@ -1541,7 +1553,11 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             return
             
         item = self.stream_tree.item(selection[0])
-        stream_id = item['values'][0]
+        # タグからstream_idを取得（タグの2番目がstream_id）
+        tags = item['tags']
+        stream_id = tags[1] if len(tags) > 1 else None
+        if not stream_id:
+            return
         
         # コメント受信停止
         debug_print(f"DEBUG: Stopping stream {stream_id}")
@@ -1571,7 +1587,11 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             return
             
         item = self.stream_tree.item(selection[0])
-        stream_id = item['values'][0]
+        # タグからstream_idを取得（タグの2番目がstream_id）
+        tags = item['tags']
+        stream_id = tags[1] if len(tags) > 1 else None
+        if not stream_id:
+            return
         
         if messagebox.askyesno(
             self.strings["messages"]["confirm"], 

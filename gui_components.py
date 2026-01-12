@@ -135,18 +135,18 @@ class GUIComponents:
         stream_list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         
         # Treeview for stream list - 列名を左揃えに、カラム幅固定
-        columns = (self.strings["columns"]["id"], self.strings["columns"]["platform"], 
+        # Note: IDは内部で保持するがユーザーには表示しない
+        columns = (self.strings["columns"]["platform"], 
                   self.strings["columns"]["title"], self.strings["columns"]["url"], 
                   self.strings["columns"]["status"])
         self.stream_tree = ttk.Treeview(stream_list_frame, columns=columns, show='headings', height=6)
         
         # カラム幅を固定（stretch=Falseで自動リサイズを無効化）
         column_widths = {
-            self.strings["columns"]["id"]: 120, 
             self.strings["columns"]["platform"]: 80, 
-            self.strings["columns"]["title"]: 250, 
-            self.strings["columns"]["url"]: 300, 
-            self.strings["columns"]["status"]: 100
+            self.strings["columns"]["title"]: 300, 
+            self.strings["columns"]["url"]: 350, 
+            self.strings["columns"]["status"]: 120
         }
         for col in columns:
             self.stream_tree.heading(col, text=col, anchor='w')  # 列名を左揃えに
@@ -196,8 +196,8 @@ class GUIComponents:
             column = self.stream_tree.identify_column(event.x)
             column_index = int(column.replace('#', '')) - 1
             
-            # URL列（インデックス3）の場合は編集
-            if column_index == 3:
+            # URL列（インデックス2）の場合は編集
+            if column_index == 2:
                 self.edit_stream_url()
                 return
             
@@ -205,15 +205,16 @@ class GUIComponents:
             item = self.stream_tree.identify_row(event.y)
             if item:
                 self.stream_tree.selection_set(item)
-                # 現在のステータスを確認
-                values = self.stream_tree.item(item)['values']
-                stream_id = values[0]
-                settings = self.stream_manager.streams.get(stream_id)
-                if settings:
-                    if settings.is_active:
-                        self.stop_selected_stream()
-                    else:
-                        self.start_selected_stream()
+                # タグからstream_idを取得（タグの2番目がstream_id）
+                tags = self.stream_tree.item(item)['tags']
+                stream_id = tags[1] if len(tags) > 1 else None
+                if stream_id:
+                    settings = self.stream_manager.streams.get(stream_id)
+                    if settings:
+                        if settings.is_active:
+                            self.stop_selected_stream()
+                        else:
+                            self.start_selected_stream()
         
         self.stream_tree.bind("<Button-3>", on_stream_right_click)  # 右クリック
         self.stream_tree.bind("<Double-Button-1>", on_stream_double_click)  # ダブルクリック
@@ -223,8 +224,11 @@ class GUIComponents:
             selection = self.stream_tree.selection()
             if selection:
                 item = self.stream_tree.item(selection[0])
-                stream_id = item['values'][0]
-                self.update_selected_stream_info(stream_id)
+                # タグからstream_idを取得（タグの2番目がstream_id）
+                tags = item['tags']
+                stream_id = tags[1] if len(tags) > 1 else None
+                if stream_id:
+                    self.update_selected_stream_info(stream_id)
         
         self.stream_tree.bind("<<TreeviewSelect>>", on_stream_select)
         
@@ -481,14 +485,15 @@ class GUIComponents:
             # タイトルが長い場合は省略表示
             display_title = settings.title[:40] + "..." if len(settings.title) > 40 else settings.title
             
-            # タグを設定（受信中なら'running'、停止中なら'stopped'）
+            # タグを設定（受信中なら'running'、停止中なら'stopped'、stream_idは内部用タグとして保持）
             tag = 'running' if settings.is_active else 'stopped'
             
             debug_print(f"DEBUG: Adding stream to list: {stream_id}, URL: {settings.url[:30]}..., Status: {status}")
             
+            # stream_idをタグに含めて内部的に保持（表示はしない）
             self.stream_tree.insert('', tk.END, values=(
-                stream_id, settings.platform, display_title, settings.url[:50], status
-            ), tags=(tag,))
+                settings.platform, display_title, settings.url[:50], status
+            ), tags=(tag, stream_id))
     
     def add_stream_tab(self, stream_settings):
         """配信の情報を初期化（タブは廃止）"""
@@ -559,7 +564,11 @@ class GUIComponents:
             return
             
         item = self.stream_tree.item(selection[0])
-        stream_id = item['values'][0]
+        # タグからstream_idを取得（タグの2番目がstream_id）
+        tags = item['tags']
+        stream_id = tags[1] if len(tags) > 1 else None
+        if not stream_id:
+            return
         settings = self.stream_manager.streams.get(stream_id)
         
         if not settings:
@@ -577,7 +586,7 @@ class GUIComponents:
         # 配信ID表示
         info_frame = ttk.Frame(dialog)
         info_frame.pack(fill=tk.X, padx=20, pady=(20, 10))
-        ttk.Label(info_frame, text=f"配信ID: {stream_id}", font=('', 10, 'bold')).pack(anchor=tk.W)
+        ttk.Label(info_frame, text=f"{self.strings['columns']['stream_id']}: {stream_id}", font=('', 10, 'bold')).pack(anchor=tk.W)
         
         # URL入力
         url_frame = ttk.Frame(dialog)
@@ -738,21 +747,26 @@ class GUIComponents:
         tree_frame = ttk.Frame(stream_select_frame)
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        columns = ("include", "source", "stream_id", "platform", "title")
+        # columns = ("include", "source", "stream_id", "platform", "title")
+        columns = ("include", "source", "platform", "title")
         tree = ttk.Treeview(tree_frame, columns=columns, show='headings', height=6)
         
         # カラム設定
         tree.heading("include",   text=self.strings['announcement']['include_column'])
         tree.heading("source",    text=self.strings['announcement']['source_column'])
-        tree.heading("stream_id", text=self.strings['columns']['stream_id'])
+        # tree.heading("stream_id", text=self.strings['columns']['stream_id'])
         tree.heading("platform",  text=self.strings['columns']['platform'])
         tree.heading("title",     text=self.strings['columns']['title'])
         
         tree.column("include", width=100, anchor="center")
         tree.column("source", width=120, anchor="center")
-        tree.column("stream_id", width=120)
+        # tree.column("stream_id", width=120)
         tree.column("platform", width=80)
         tree.column("title", width=250)
+
+        for col in columns:
+            tree.heading(col, text=col, anchor='w')  # 列名を左揃えに
+            # tree.column(col, width=column_widths[col], stretch=False)
         
         # スクロールバー
         scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=tree.yview)
@@ -785,7 +799,7 @@ class GUIComponents:
             tree.insert('', tk.END, iid=stream_id, values=(
                 include_mark,
                 source_mark,
-                stream_id,
+                # stream_id,
                 settings.platform,
                 title_display
             ))
@@ -1246,9 +1260,9 @@ class GUIComponents:
         manager_listbox.configure(yscrollcommand=manager_scroll.set)
         manager_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # 初期データ設定
+        # 初期データ設定（IDは表示しない）
         for manager in self.global_settings.managers:
-            display_text = f"[{manager['platform']}] {manager['name']} ({manager['id']})"
+            display_text = f"[{manager['platform']}] {manager['name']}"
             manager_listbox.insert(tk.END, display_text)
         
         manager_button_frame = ttk.Frame(manager_frame)
@@ -1283,9 +1297,9 @@ class GUIComponents:
         ng_listbox.configure(yscrollcommand=ng_scroll.set)
         ng_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # 初期データ設定
+        # 初期データ設定（IDは表示しない）
         for ng_user in self.global_settings.ng_users:
-            display_text = f"[{ng_user['platform']}] {ng_user['name']} ({ng_user['id']})"
+            display_text = f"[{ng_user['platform']}] {ng_user['name']}"
             ng_listbox.insert(tk.END, display_text)
         
         ng_button_frame = ttk.Frame(ng_settings_frame)
