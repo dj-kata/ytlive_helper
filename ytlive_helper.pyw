@@ -16,6 +16,14 @@ import logging
 import traceback
 import socket
 
+# IPv4を強制する設定
+from urllib3.util import connection
+
+def allowed_gai_family():
+    return socket.AF_INET
+
+connection.allowed_gai_family = allowed_gai_family
+
 # コメント取得ライブラリ
 import pytchat  # YouTube用
 
@@ -97,6 +105,63 @@ def debug_print(*args, **kwargs):
     if DEBUG_ENABLED:
         print(*args, **kwargs)
 
+def extract_title_info(title, pattern_series, pattern_base_title_list):
+    """タイトルからbase_titleとseriesを抽出
+    
+    Args:
+        title (str): 元のタイトル
+        pattern_series (str): シリーズ番号のパターン（例: '#[number]', '第[number]回'）
+        pattern_base_title_list (list): 削除するパターンのリスト（例: ['【】', '[]']）
+        
+    Returns:
+        tuple: (base_title, series)
+        
+    Examples:
+        >>> extract_title_info('【あけおめ】皆伝たぬきのINFINITAS配信 #290', '#[number]', ['【】'])
+        ('皆伝たぬきのINFINITAS配信', '#290')
+        
+        >>> extract_title_info('第10回 SOUND VOLTEX 配信', '第[number]回', [])
+        ('SOUND VOLTEX 配信', '第10回')
+    """
+    import re
+    
+    base_title = title
+    series = None
+    
+    # 1. シリーズ番号を抽出
+    if pattern_series:
+        # [number]を(\d+)に変換して正規表現パターンを作成
+        regex_pattern = pattern_series.replace('[number]', r'(\d+)')
+        match = re.search(regex_pattern, title)
+        if match:
+            series = match.group(0)  # マッチした全体（例: '#290', '第10回'）
+            # base_titleからシリーズ番号を削除
+            base_title = title.replace(series, '').strip()
+    
+    # 2. base_titleから指定パターンを削除
+    if pattern_base_title_list:
+        for pattern in pattern_base_title_list:
+            if pattern == '【】':
+                # 【...】形式を削除
+                base_title = re.sub(r'【[^】]*】', '', base_title)
+            elif pattern == '[]':
+                # [...] 形式を削除
+                base_title = re.sub(r'\[[^\]]*\]', '', base_title)
+            elif pattern == '()':
+                # (...) 形式を削除
+                base_title = re.sub(r'\([^)]*\)', '', base_title)
+            elif pattern == '「」':
+                # 「...」形式を削除
+                base_title = re.sub(r'「[^」]*」', '', base_title)
+            else:
+                # その他のパターンはそのまま削除
+                base_title = base_title.replace(pattern, '')
+    
+    # 3. 余分な空白を削除
+    base_title = ' '.join(base_title.split())
+    
+    return base_title, series
+
 def load_language(lang_code='ja'):
     """言語ファイルをロード
     
@@ -167,6 +232,19 @@ class GlobalSettings:
 
         # 共通NGリスト（新形式：辞書のリスト）
         self.ng_users = []
+        
+        # タイトル抽出設定
+        self.pattern_series = '#[number]'  # シリーズ番号抽出パターン
+        self.pattern_base_title_list = ['【】', '[]']  # base_titleから削除するパターンのリスト
+        
+        # 告知テンプレート設定
+        self.announcement_template = '配信開始しました！'  # 基本の告知文のテンプレート
+        
+        # 配信内容取得設定
+        self.content_marker = '今日の内容:'  # 概要欄から配信内容を取得する際のマーカー文字列
+        
+        # 告知設定
+        self.announcement_template = '配信開始しました！'  # 基本の告知文テンプレート
         
     def save(self, filename='global_settings.json'):
         with open(filename, 'w', encoding='utf-8') as f:
@@ -377,6 +455,49 @@ class TwitchAPI:
             return username
         
         return None
+    
+    def get_channel_description(self, username):
+        """チャンネルの説明（About）を取得
+        
+        Args:
+            username (str): Twitchユーザー名
+            
+        Returns:
+            str: チャンネル説明、取得失敗時は空文字列
+        """
+        if not self.access_token:
+            if not self.get_access_token():
+                return ""
+        
+        url = "https://api.twitch.tv/helix/users"
+        
+        headers = {
+            "Client-ID": self.client_id,
+            "Authorization": f"Bearer {self.access_token}"
+        }
+        
+        params = {
+            "login": username
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=5)
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            if data["data"]:
+                user = data["data"][0]
+                description = user.get("description", "")
+                logger.info(f"Twitch channel description obtained for {username}")
+                return description
+            else:
+                logger.warning(f"Twitch user not found: {username}")
+                return ""
+                
+        except Exception as e:
+            logger.warning(f"Failed to get Twitch channel description: {e}")
+            return ""
 
 class CommentReceiver:
     """コメント受信の基底クラス"""
@@ -426,6 +547,7 @@ class YouTubeCommentReceiver(CommentReceiver):
         """pytchatを使ったコメント受信"""
         try:
             debug_print(f"DEBUG: YouTubeCommentReceiver.start() called")
+            debug_print(f"DEBUG: Thread ID: {threading.current_thread().ident}")
             video_id = self.extract_video_id(self.settings.url)
             
             if not video_id:
@@ -437,21 +559,66 @@ class YouTubeCommentReceiver(CommentReceiver):
             debug_print(f"DEBUG: Creating pytchat.create with video_id: {video_id}")
             
             # interruptable=Falseでシグナルハンドラを無効化（スレッドで動作可能に）
+            # 
+            # 高速化のために内部ポーリング間隔を短縮（monkey patch）
+            try:
+                import pytchat.core.livechat as ptc_livechat
+                # pytchatのデフォルトポーリング間隔を短縮
+                # 注意: 内部実装に依存するため、バージョンによっては動作しない可能性
+                if hasattr(ptc_livechat, '_POLLING_INTERVAL'):
+                    original_interval = ptc_livechat._POLLING_INTERVAL
+                    ptc_livechat._POLLING_INTERVAL = 1.0  # 1秒に短縮
+                    debug_print(f"DEBUG: Changed pytchat polling interval from {original_interval} to 1.0")
+            except Exception as patch_error:
+                debug_print(f"DEBUG: Could not patch pytchat polling interval: {patch_error}")
+            
             self.livechat = pytchat.create(video_id=video_id, interruptable=False)
+            
+            # livechatオブジェクト作成後にもポーリング間隔を設定
+            try:
+                if hasattr(self.livechat, 'processor'):
+                    processor = self.livechat.processor
+                    if hasattr(processor, 'continuation'):
+                        continuation = processor.continuation
+                        # continuation内部のポーリング間隔を短縮
+                        if hasattr(continuation, 'fetch_interval'):
+                            original = getattr(continuation, 'fetch_interval', None)
+                            continuation.fetch_interval = 1.0
+                            debug_print(f"DEBUG: Set livechat fetch_interval to 1.0 (was: {original})")
+            except Exception as patch_error:
+                debug_print(f"DEBUG: Could not patch livechat fetch_interval: {patch_error}")
+            
             debug_print(f"DEBUG: pytchat.create successful, livechat object created")
             debug_print(f"DEBUG: Starting comment loop")
             
             message_count = 0
+            get_call_count = 0
             
             while not self.stop_event.is_set() and self.livechat.is_alive():
                 try:
+                    get_call_count += 1
+                    if get_call_count % 100 == 0:
+                        import datetime
+                        timestamp_str = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                        debug_print(f"DEBUG: [{timestamp_str}] YouTube: get() called {get_call_count} times")
+                    
+                    # pytchatのget()を呼び出し
                     for comment in self.livechat.get().sync_items():
                         if self.stop_event.is_set():
                             break
                         
                         message_count += 1
                         if message_count % 10 == 0:
-                            debug_print(f"DEBUG: Received {message_count} YouTube comments")
+                            import datetime
+                            timestamp_str = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                            debug_print(f"DEBUG: [{timestamp_str}] YouTube thread: Received {message_count} comments")
+                        
+                        # コメントの実際の投稿時刻をログに記録
+                        if message_count % 10 == 1:  # 最初のコメントと10件ごと
+                            import datetime
+                            now_str = datetime.datetime.now().strftime("%H:%M:%S")
+                            comment_time_str = comment.datetime
+                            debug_print(f"DEBUG: YouTube comment - Posted: {comment_time_str}, Received: {now_str}")
                         
                         # 管理者判定（新形式）
                         is_moderator = False
@@ -485,7 +652,10 @@ class YouTubeCommentReceiver(CommentReceiver):
                     debug_print(f"DEBUG: Error in YouTube chat loop: {inner_e}")
                     logger.error(f"Error in YouTube chat loop: {inner_e}")
                     
-                time.sleep(1)
+                # 最小限の待機（0.01秒）でget()を頻繁に呼び出す
+                if self.stop_event.is_set():
+                    break
+                time.sleep(0.01)
                 
         except KeyboardInterrupt:
             debug_print(f"DEBUG: KeyboardInterrupt detected in YouTube receiver")
@@ -527,6 +697,7 @@ class TwitchCommentReceiver(CommentReceiver):
         """socketを使ったTwitch IRC接続でコメント受信"""
         try:
             debug_print(f"DEBUG: TwitchCommentReceiver.start() called")
+            debug_print(f"DEBUG: Thread ID: {threading.current_thread().ident}")
             debug_print(f"DEBUG: URL: {self.settings.url}")
             
             # URLからチャンネル名を抽出
@@ -544,7 +715,7 @@ class TwitchCommentReceiver(CommentReceiver):
             
             # IRCソケット作成
             self.irc_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.irc_socket.settimeout(300)  # 5分のタイムアウト
+            self.irc_socket.settimeout(1.0)  # 1秒のタイムアウト（頻繁にGILを解放）
             
             debug_print(f"DEBUG: Connecting to Twitch IRC: {server}:{port}")
             self.irc_socket.connect((server, port))
@@ -565,11 +736,16 @@ class TwitchCommentReceiver(CommentReceiver):
             # メッセージ受信ループ
             while not self.stop_event.is_set():
                 try:
-                    # データ受信
+                    # データ受信（1秒でタイムアウト）
                     response = self.irc_socket.recv(2048).decode('utf-8', errors='ignore')
                     
                     if not response:
                         debug_print("DEBUG: Connection closed by server")
+                        break
+                    
+                    # 停止チェック
+                    if self.stop_event.is_set():
+                        debug_print("DEBUG: Stop event detected during receive")
                         break
                     
                     buffer += response
@@ -590,7 +766,15 @@ class TwitchCommentReceiver(CommentReceiver):
                             message_count += 1
                             
                             if message_count % 10 == 0:
-                                debug_print(f"DEBUG: Received {message_count} Twitch messages")
+                                import datetime
+                                timestamp_str = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                                debug_print(f"DEBUG: [{timestamp_str}] Twitch thread: Received {message_count} messages")
+                            
+                            # 最初とN件ごとに受信時刻を記録
+                            if message_count % 10 == 1:
+                                import datetime
+                                now_str = datetime.datetime.now().strftime("%H:%M:%S")
+                                debug_print(f"DEBUG: Twitch message received at: {now_str}")
                             
                             # メッセージをパース
                             author_name = None
@@ -793,6 +977,10 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         # GUI初期化
         self.root = tk.Tk()
         self.root.title("Multi-Stream Comment Helper")
+        
+        # アプリケーションアイコンを設定
+        self.setup_icon()
+        
         self.root.geometry("1000x700")
         if self.global_settings.keep_on_top:
             self.root.attributes('-topmost', True)
@@ -926,8 +1114,8 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
             
-            # タイムアウト設定でページを取得（短縮: 5秒）
-            response = requests.get(url, headers=headers, timeout=5)
+            # タイムアウト設定でページを取得（短縮: 3秒）
+            response = requests.get(url, headers=headers, timeout=3)
             response.raise_for_status()
             
             # HTMLをパース
@@ -976,6 +1164,110 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
             return ""
         except Exception as e:
             logger.error(f"Unexpected error getting stream title: {e}")
+            return ""
+    
+    def get_today_content(self, platform, url, content_marker):
+        """配信の今日の内容を概要欄から取得
+        
+        BeautifulSoupでページ全体からマーカー文字列を検索し、
+        その次の行を取得する
+        
+        Args:
+            platform (str): 'youtube' or 'twitch'
+            url (str): 配信URL
+            content_marker (str): マーカー文字列（例: "今日の内容:"）
+            
+        Returns:
+            str: 配信内容（取得できない場合は空文字列）
+        """
+        if not content_marker:
+            return ""
+        
+        try:
+            if platform == 'youtube':
+                # User-Agentヘッダーを設定
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+                
+                # タイムアウト設定でページを取得
+                response = requests.get(url, headers=headers, timeout=5)
+                response.raise_for_status()
+                
+                # HTMLをパース
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # マーカー文字列を含むタグを検索
+                target = None
+                for tag in soup.find_all(True):
+                    if content_marker in tag.text:
+                        target = tag
+                        break
+                
+                if not target:
+                    logger.info(f"Marker '{content_marker}' not found in YouTube page")
+                    return ""
+                
+                # タグのテキストを改行で分割してマーカーの次の行を取得
+                lines = target.text.split('\n')
+                for i, line in enumerate(lines):
+                    if content_marker in line:
+                        # 次の行が存在するかチェック
+                        if len(lines) >= i + 2:
+                            today_content = lines[i + 1].strip()
+                            if today_content:  # 空行でない場合
+                                logger.info(f"Extracted today's content from YouTube: {today_content}")
+                                return today_content
+                
+                logger.info(f"No content found after marker '{content_marker}' in YouTube")
+                return ""
+            
+            elif platform == 'twitch':
+                # TwitchAPIインスタンスを作成（キャッシュ）
+                if not hasattr(self, 'twitch_api'):
+                    self.twitch_api = TwitchAPI()
+                
+                # APIでチャンネル説明を取得
+                if self.twitch_api.client_id and self.twitch_api.client_secret:
+                    # URLからチャンネル名を抽出
+                    username = TwitchAPI.extract_username_from_url(url)
+                    if not username:
+                        logger.warning(f"Could not extract username from Twitch URL: {url}")
+                        return ""
+                    
+                    # チャンネル説明を取得
+                    description = self.twitch_api.get_channel_description(username)
+                    if not description:
+                        logger.info("Twitch channel description is empty")
+                        return ""
+                    
+                    # マーカーの次の行を抽出
+                    lines = description.split('\n')
+                    for i, line in enumerate(lines):
+                        if content_marker in line:
+                            # 次の行が存在するかチェック
+                            if len(lines) >= i + 2:
+                                today_content = lines[i + 1].strip()
+                                if today_content:  # 空行でない場合
+                                    logger.info(f"Extracted today's content from Twitch: {today_content}")
+                                    return today_content
+                    
+                    logger.info(f"Marker '{content_marker}' not found in Twitch channel description")
+                    return ""
+                else:
+                    logger.info("Twitch API credentials not configured")
+                    return ""
+            
+            return ""
+            
+        except requests.Timeout:
+            logger.warning(f"Timeout while fetching content from {url}")
+            return ""
+        except requests.RequestException as e:
+            logger.warning(f"Error fetching content from {url}: {e}")
+            return ""
+        except Exception as e:
+            logger.error(f"Unexpected error getting today's content: {e}")
             return ""
     
     def update_stream_title(self, stream_id):
@@ -1039,12 +1331,30 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         settings = self.stream_manager.streams[stream_id]
         settings.title = new_title
         
-        # タイトルラベルが存在すれば更新
-        if hasattr(settings, 'title_label'):
-            settings.title_label.config(text=new_title)
+        # タイトルから情報を抽出
+        base_title, series = extract_title_info(
+            new_title,
+            self.global_settings.pattern_series,
+            self.global_settings.pattern_base_title_list
+        )
+        
+        # 抽出結果をprintで出力
+        print(f"=== タイトル抽出結果 ===")
+        print(f"配信ID: {stream_id}")
+        print(f"元のタイトル: {new_title}")
+        print(f"base_title: {base_title}")
+        print(f"series: {series}")
+        print(f"=====================")
+        
+        # ログにも記録
+        logger.info(f"Title extraction for {stream_id}: base_title='{base_title}', series='{series}'")
         
         # リストを更新
         self.update_stream_list()
+        
+        # 選択中の配信情報を更新
+        if self.selected_stream_id == stream_id:
+            self.update_selected_stream_info(stream_id)
         
         logger.info(f"Title updated asynchronously for {stream_id}: {new_title}")
     
@@ -1191,13 +1501,21 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         
         if success:
             # UI更新
-            self.update_stream_list()
+            debug_print(f"DEBUG: Stream started successfully, updating UI for {stream_id}")
             settings = self.stream_manager.streams[stream_id]
-            if hasattr(settings, 'status_label'):
-                settings.status_label.config(
-                    text=self.strings["stream_info"]["status_running"], 
-                    foreground="red"
-                )
+            debug_print(f"DEBUG: settings.url = {settings.url}")
+            debug_print(f"DEBUG: settings.is_active = {settings.is_active}")
+            
+            # リスト更新
+            self.update_stream_list()
+            
+            # 選択中の配信情報を更新
+            if self.selected_stream_id == stream_id:
+                self.update_selected_stream_info(stream_id)
+            
+            # 強制的にGUI更新
+            self.root.update_idletasks()
+            debug_print(f"DEBUG: UI update completed")
         else:
             messagebox.showerror(
                 self.strings["messages"]["error"], 
@@ -1215,16 +1533,24 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         stream_id = item['values'][0]
         
         # コメント受信停止
+        debug_print(f"DEBUG: Stopping stream {stream_id}")
         self.stream_manager.stop_stream(stream_id)
         
         # UI更新
-        self.update_stream_list()
+        debug_print(f"DEBUG: Updating UI after stop")
         settings = self.stream_manager.streams.get(stream_id)
-        if settings and hasattr(settings, 'status_label'):
-            settings.status_label.config(
-                text=self.strings["stream_info"]["status_stopped"], 
-                foreground="red"
-            )
+        if settings:
+            debug_print(f"DEBUG: settings.is_active = {settings.is_active}")
+            
+            self.update_stream_list()
+            
+            # 選択中の配信情報を更新
+            if self.selected_stream_id == stream_id:
+                self.update_selected_stream_info(stream_id)
+            
+            # 強制的にGUI更新
+            self.root.update_idletasks()
+            debug_print(f"DEBUG: UI update completed")
     
     def remove_selected_stream(self):
         """選択された配信を削除"""
@@ -1449,8 +1775,51 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         except Exception as e:
             logger.error(f"Failed to generate TODO XML: {e}")
     
+    def setup_icon(self):
+        """アプリケーションアイコンを設定"""
+        # 方法1: .ico ファイルを試す
+        try:
+            icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
+            if os.path.exists(icon_path):
+                self.root.iconbitmap(icon_path)
+                debug_print(f"DEBUG: Loaded icon from {icon_path}")
+                logger.info(f"Application icon loaded: {icon_path}")
+                return
+        except Exception as e:
+            debug_print(f"DEBUG: Could not load .ico icon: {e}")
+        
+        # 方法2: .png ファイルを試す（フォールバック）
+        try:
+            png_path = os.path.join(os.path.dirname(__file__), "icon.png")
+            if os.path.exists(png_path):
+                icon_image = tk.PhotoImage(file=png_path)
+                self.root.iconphoto(True, icon_image)
+                debug_print(f"DEBUG: Loaded icon from {png_path}")
+                logger.info(f"Application icon loaded: {png_path}")
+                return
+        except Exception as e:
+            debug_print(f"DEBUG: Could not load .png icon: {e}")
+        
+        # アイコンが読み込めなかった場合（デフォルトアイコンを使用）
+        debug_print("DEBUG: Using default icon (no custom icon file found)")
+        logger.info("Application icon not found, using default Tk icon")
+    
     def on_closing(self):
         """アプリケーション終了時の処理"""
+        # ウィンドウ位置を保存
+        try:
+            # geometry()の戻り値は "幅x高さ+X座標+Y座標" の形式
+            geometry = self.root.geometry()
+            # "+X+Y" の部分を抽出
+            if '+' in geometry:
+                parts = geometry.split('+')
+                if len(parts) >= 3:
+                    self.global_settings.window_x = int(parts[1])
+                    self.global_settings.window_y = int(parts[2])
+                    logger.info(f"Window position saved: x={self.global_settings.window_x}, y={self.global_settings.window_y}")
+        except Exception as e:
+            logger.error(f"Failed to save window position: {e}")
+        
         # すべての配信のURLを保存（受信中かどうかに関わらず）
         all_urls = []
         for stream_id, settings in self.stream_manager.streams.items():

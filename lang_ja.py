@@ -47,6 +47,7 @@ STRINGS = {
     "request": {
         "title": "リクエスト一覧（全配信）",
         "manual_add_label": "手動追加:",
+        "manual_add_user_label": "User名:",
         "add_button": "追加",
         "delete_button": "削除",
         "move_up": "上に移動",
@@ -84,6 +85,62 @@ STRINGS = {
         "status_running": "実行中",
         "status_stopped": "停止中",
         "title_loading": "(取得中...)",
+    },
+    
+    # 選択中の配信情報
+    "selected_stream_info": {
+        "title": "選択中の配信情報",
+        "status": "Status:",
+        "comment_count": "コメント数:",
+        "stream_title": "Title:",
+        "platform": "Platform:",
+        "url": "URL:",
+    },
+    
+    # 告知機能
+    "announcement": {
+        "button": "告知",
+        "dialog_title": "配信告知",
+        "content_frame": "告知内容",
+        "basic_text_label": "基本の告知文:",
+        "preview_label": "プレビュー（実際に投稿される内容）:",
+        "stream_select_frame": "配信選択",
+        "include_column": "告知に含める",
+        "source_column": "基本情報取得元",
+        "obs_not_configured": "（OBS未設定）",
+        "help_text_not_configured": "※ 基本情報取得元を設定するには、OBS設定を完了してください",
+        "help_text_configured": "※ 「告知に含める」: クリックでON/OFF\n※ 「基本情報取得元」: クリックで選択（OBS送信用）",
+        "tweet_button": "告知ツイート",
+        "cancel_button": "キャンセル",
+        "warning_no_streams": "配信が登録されていません。",
+        "warning_no_selection": "告知に含める配信を少なくとも1つ選択してください。",
+    },
+    
+    # タイトル抽出設定
+    "title_extraction": {
+        "frame_title": "タイトル抽出設定",
+        "series_pattern_label": "シリーズパターン:",
+        "series_help": "例: '#[number]' → #290、'第[number]回' → 第10回",
+        "base_pattern_label": "base_title除外パターン:",
+        "base_pattern_help": "例: 【】 → 【あけおめ】を削除、[] → [雑談]を削除",
+        "add_button": "追加",
+        "delete_button": "削除",
+        "pattern_dialog_title": "パターン追加",
+        "pattern_dialog_prompt": "除外するパターンを入力してください\n例: 【】, [], (), 「」",
+    },
+    
+    # 告知テンプレート設定
+    "announcement_template": {
+        "frame_title": "告知テンプレート設定",
+        "template_label": "基本の告知文:",
+        "template_help": "告知ダイアログで使用されるデフォルトの告知文です",
+    },
+    
+    # 配信内容取得設定
+    "content_extraction": {
+        "frame_title": "配信内容取得設定",
+        "marker_label": "配信内容マーカー:",
+        "marker_help": "概要欄からこのマーカーの次の行を配信内容として取得します\n例: '今日の内容:' → 次の行が today_content になります",
     },
     
     # 統計情報

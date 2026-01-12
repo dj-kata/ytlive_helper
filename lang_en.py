@@ -47,6 +47,7 @@ STRINGS = {
     "request": {
         "title": "Request List (All Streams)",
         "manual_add_label": "Manual Add:",
+        "manual_add_user_label": "User Name:",
         "add_button": "Add",
         "delete_button": "Delete",
         "move_up": "Move Up",
@@ -84,6 +85,62 @@ STRINGS = {
         "status_running": "Running",
         "status_stopped": "Stopped",
         "title_loading": "(Loading...)",
+    },
+    
+    # Selected stream info
+    "selected_stream_info": {
+        "title": "Selected Stream Info",
+        "status": "Status:",
+        "comment_count": "Comments:",
+        "stream_title": "Title:",
+        "platform": "Platform:",
+        "url": "URL:",
+    },
+    
+    # Announcement feature
+    "announcement": {
+        "button": "Announce",
+        "dialog_title": "Stream Announcement",
+        "content_frame": "Announcement Content",
+        "basic_text_label": "Basic announcement text:",
+        "preview_label": "Preview (actual post content):",
+        "stream_select_frame": "Stream Selection",
+        "include_column": "Include",
+        "source_column": "Info Source",
+        "obs_not_configured": "(OBS Not Configured)",
+        "help_text_not_configured": "※ Configure OBS settings to set info source",
+        "help_text_configured": "※ 'Include': Click to toggle ON/OFF\n※ 'Info Source': Click to select (for OBS)",
+        "tweet_button": "Post Tweet",
+        "cancel_button": "Cancel",
+        "warning_no_streams": "No streams registered.",
+        "warning_no_selection": "Please select at least one stream to include.",
+    },
+    
+    # Title extraction settings
+    "title_extraction": {
+        "frame_title": "Title Extraction Settings",
+        "series_pattern_label": "Series Pattern:",
+        "series_help": "e.g. '#[number]' → #290, 'ep[number]' → ep10",
+        "base_pattern_label": "Base Title Exclusion Patterns:",
+        "base_pattern_help": "e.g. 【】 → removes 【text】, [] → removes [text]",
+        "add_button": "Add",
+        "delete_button": "Delete",
+        "pattern_dialog_title": "Add Pattern",
+        "pattern_dialog_prompt": "Enter pattern to exclude\ne.g. 【】, [], (), 「」",
+    },
+    
+    # Announcement template settings
+    "announcement_template": {
+        "frame_title": "Announcement Template Settings",
+        "template_label": "Basic announcement text:",
+        "template_help": "Default announcement text used in announcement dialog",
+    },
+    
+    # Content extraction settings
+    "content_extraction": {
+        "frame_title": "Content Extraction Settings",
+        "marker_label": "Content Marker:",
+        "marker_help": "Extracts the line after this marker from description as today's content\ne.g. 'Today:' → next line becomes today_content",
     },
     
     # Statistics
