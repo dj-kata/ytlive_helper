@@ -256,8 +256,8 @@ class GUIComponents:
             column = self.stream_tree.identify_column(event.x)
             column_index = int(column.replace('#', '')) - 1
             
-            # URL列（インデックス3）の場合は編集
-            if column_index == 3:
+            # URL列（インデックス2）の場合は編集
+            if column_index == 2:
                 self.edit_stream_url()
                 return
             
