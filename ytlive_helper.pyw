@@ -1824,9 +1824,17 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
     
     def setup_icon(self):
         """アプリケーションアイコンを設定"""
+        # 実行ファイルのディレクトリを取得（ビルド環境対応）
+        if getattr(sys, 'frozen', False):
+            # cx_Freeze, PyInstallerなどでビルドされた場合
+            application_path = os.path.dirname(sys.executable)
+        else:
+            # 通常のPythonスクリプトとして実行された場合
+            application_path = os.path.dirname(os.path.abspath(__file__))
+        
         # 方法1: .ico ファイルを試す
         try:
-            icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
+            icon_path = os.path.join(application_path, "icon.ico")
             if os.path.exists(icon_path):
                 self.root.iconbitmap(icon_path)
                 debug_print(f"DEBUG: Loaded icon from {icon_path}")
@@ -1834,18 +1842,22 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
                 return
         except Exception as e:
             debug_print(f"DEBUG: Could not load .ico icon: {e}")
+            logger.debug(f"Failed to load .ico icon: {e}")
         
         # 方法2: .png ファイルを試す（フォールバック）
         try:
-            png_path = os.path.join(os.path.dirname(__file__), "icon.png")
+            png_path = os.path.join(application_path, "icon.png")
             if os.path.exists(png_path):
                 icon_image = tk.PhotoImage(file=png_path)
+                # PhotoImageオブジェクトを保持（ガベージコレクション対策）
+                self.root._icon_image = icon_image
                 self.root.iconphoto(True, icon_image)
                 debug_print(f"DEBUG: Loaded icon from {png_path}")
                 logger.info(f"Application icon loaded: {png_path}")
                 return
         except Exception as e:
             debug_print(f"DEBUG: Could not load .png icon: {e}")
+            logger.debug(f"Failed to load .png icon: {e}")
         
         # アイコンが読み込めなかった場合（デフォルトアイコンを使用）
         debug_print("DEBUG: Using default icon (no custom icon file found)")
@@ -1960,6 +1972,37 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
 
 if __name__ == '__main__':
     import signal
+    import sys
+    
+    # 未処理の例外を全てキャッチする
+    def handle_exception(exc_type, exc_value, exc_traceback):
+        """全ての未処理例外をログに記録"""
+        if issubclass(exc_type, KeyboardInterrupt):
+            # KeyboardInterruptは通常処理
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        
+        logger.critical("未処理の例外が発生しました:", exc_info=(exc_type, exc_value, exc_traceback))
+        logger.critical(f"例外タイプ: {exc_type.__name__}")
+        logger.critical(f"例外メッセージ: {exc_value}")
+        
+        # デバッグモードの場合はコンソールにも出力
+        if DEBUG_ENABLED:
+            print("\n" + "="*70)
+            print("致命的なエラーが発生しました")
+            print("="*70)
+            print(f"エラータイプ: {exc_type.__name__}")
+            print(f"エラーメッセージ: {exc_value}")
+            print("\n詳細なトレースバック:")
+            import traceback
+            traceback.print_exception(exc_type, exc_value, exc_traceback)
+            print("="*70)
+            print(f"ログファイル: {os.path.abspath('./log/dbg.log')}")
+            print("="*70)
+            input("\nEnterキーを押すと終了します...")
+    
+    # 例外ハンドラを登録
+    sys.excepthook = handle_exception
     
     # SIGINTハンドラー（Ctrl+C対策）
     def signal_handler(sig, frame):
@@ -1969,23 +2012,53 @@ if __name__ == '__main__':
     # SIGINTを無視（Windowsでのコンソール終了を防ぐ）
     signal.signal(signal.SIGINT, signal_handler)
     
-    updater = GitHubUpdater(
-        github_author='dj-kata',
-        github_repo='ytlive_helper',
-        current_version=SWVER,           # 現在のバージョン
-        main_exe_name="ytlive_helper.exe",  # メインプログラムのexe名
-        updator_exe_name="update.exe",           # アップデート用プログラムのexe名
-    )
-    
-    # メインプログラムから呼び出す場合
-    updater.check_and_update()
-
     try:
+        logger.info("="*70)
+        logger.info("アプリケーション起動開始")
+        logger.info(f"バージョン: {SWVER}")
+        logger.info(f"デバッグモード: {DEBUG_ENABLED}")
+        logger.info(f"作業ディレクトリ: {os.getcwd()}")
+        logger.info(f"Python: {sys.version}")
+        logger.info("="*70)
+        
+        updater = GitHubUpdater(
+            github_author='dj-kata',
+            github_repo='ytlive_helper',
+            current_version=SWVER,           # 現在のバージョン
+            main_exe_name="ytlive_helper.exe",  # メインプログラムのexe名
+            updator_exe_name="update.exe",           # アップデート用プログラムのexe名
+        )
+        
+        logger.info("アップデートチェック開始")
+        updater.check_and_update()
+        logger.info("アップデートチェック完了")
+        
+        logger.info("メインアプリケーション初期化開始")
         app = MultiStreamCommentHelper()
+        logger.info("メインアプリケーション初期化完了")
+        
+        logger.info("メインループ開始")
         app.run()
+        logger.info("メインループ終了（正常終了）")
+        
     except KeyboardInterrupt:
         logger.info("Application interrupted by KeyboardInterrupt in main")
     except Exception as e:
-        logger.error(f"Fatal error in main: {e}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
+        logger.critical(f"メイン処理で致命的なエラー: {e}")
+        logger.critical(f"トレースバック:\n{traceback.format_exc()}")
+        
+        # デバッグモードの場合はコンソールにも表示
+        if DEBUG_ENABLED:
+            print("\n" + "="*70)
+            print("メイン処理でエラーが発生しました")
+            print("="*70)
+            print(f"エラー: {e}")
+            print("\n詳細:")
+            import traceback
+            traceback.print_exc()
+            print("="*70)
+            print(f"ログファイル: {os.path.abspath('./log/dbg.log')}")
+            print("="*70)
+            input("\nEnterキーを押すと終了します...")
+        
+        raise  # 例外を再発生させてsys.excepthookで処理
