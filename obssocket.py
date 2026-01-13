@@ -237,17 +237,4 @@ class OBSSocket():
             return False
 
 if __name__ == "__main__":
-    #a = OBSSocket('localhost', '4455', 'panipaninoakuma','たぬきお休み.png','tmp.png')
-    #a.save_screenshot('メインモニタ', 'png', 'C:\\Users\\katao\\OneDrive\\デスクトップ\\hoge.png')
-    #tmp = a.get_screenshot('メインモニタ', 'png')
-    #print(a.search_itemid('2. DP_NEW', 'history_cursong'))
-    #for i in range(100):
-    #    img = a.get_screenshot()# image_data # base64文字列
-    #img.save('tmp.png')
-    a = OBSSocket('localhost', '4455', 'panipaninoakuma','ゲーム画面_FHD','tmp.png')
-    a.picw=2560
-    a.pich=1440
-    b = a.get_screenshot()
-    b.save('tmp.png')
-    #print(a.search_itemid('6. SDVX', 'sdvx_stats_v2.html'))
-    print(a.search_itemid('縦画面設定テスト', 'sdvx_stats_v2.html (2)'))
+    pass
