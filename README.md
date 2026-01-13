@@ -1,16 +1,3 @@
-# 手順
-Windowsにmingw-w64をインストール
-(以下のOnline installer)
-https://github.com/niXman/mingw-builds-binaries
-
-Windows Defenderにてウイルスと脅威の防止から除外→開発用・インストール先のディレクトリを許可
-
-あと、onefile(実行時に自己展開が必要)をつけるとDefenderに引っかかりやすいため、onefileは諦めた。
-dllなども同梱することにする。
-
-絵文字や記号をトリガワードに使う場合、tkinterの入力ボックスのバグのため設定画面から登録できない。
-global_settings.jsonを直接編集することで変更することができる。
-
 # ytlive_helperとは？
 YoutubeLive/Twitchの配信に役に立つツールです。  
 コメントを受けてお題をリストに自動追加したり、消化済みのお題を自動クリアしたりできます。  
