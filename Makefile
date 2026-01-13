@@ -19,17 +19,7 @@ $(target_zip): $(target) $(html_files) version.txt
 # 	@mv $(project_name).dist/* $(project_name)/
 # 	@rmdir $(project_name)/$(project_name).dist
 $(target): $(srcs)
-	$(wuv) run nuitka -j 16 \
-	  --mingw64 \
-	  --windows-disable-console \
-	  --standalone \
-	  --file-version=$(version) \
-	  --include-module=config_secret \
-	  --include-data-files=icon.ico=icon.ico --windows-icon-from-ico=icon.ico \
-	  --enable-plugin=tk-inter --windows-icon-from-ico=icon.ico $(project_name).pyw
-	@rm -rf $(project_name)/*
-	@mv $(project_name).dist/* $(project_name)/
-	@rmdir $(project_name).dist
+	$(wuv) run setup.py build
 
 dist: 
 	@cp -a html to_bin/
