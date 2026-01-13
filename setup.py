@@ -180,14 +180,14 @@ executables.append(
 
 # デバッグ版（コンソール付き）- エラー確認用
 # コンソールが表示されるため、エラーメッセージを直接確認できます
-executables.append(
-    Executable(
-        "ytlive_helper.pyw",
-        base=None,  # コンソールを表示
-        target_name=f"{APP_NAME}_debug.exe",
-        icon=icon_file,  # exeファイルのアイコン
-    )
-)
+# executables.append(
+    # Executable(
+        # "ytlive_helper.pyw",
+        # base=None,  # コンソールを表示
+        # target_name=f"{APP_NAME}_debug.exe",
+        # icon=icon_file,  # exeファイルのアイコン
+    # )
+# )
 
 if icon_file:
     print(f"Using icon file: {icon_file}")
