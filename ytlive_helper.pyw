@@ -1431,7 +1431,7 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
         try:
             if self.obs:
                 try:
-                    self.obs.disconnect()
+                    self.obs.close()
                 except:
                     pass
             
@@ -1441,8 +1441,16 @@ class MultiStreamCommentHelper(GUIComponents, CommentHandler):
                 self.global_settings.obs_passwd
             )
             logger.info(f"OBS connected: {self.global_settings.obs_host}:{self.global_settings.obs_port}")
+        except ConnectionRefusedError as e:
+            logger.warning(f"OBS connection refused (OBS not running or WebSocket disabled): {e}")
+            self.obs = None
+            # ユーザーに通知（初回起動時のみ）
+            if not hasattr(self, '_obs_connection_warned'):
+                self._obs_connection_warned = True
+                # メッセージは表示せず、ログのみに記録（OBSは必須ではないため）
         except Exception as e:
             logger.warning(f"OBS connection failed: {e}")
+            self.obs = None
             self.obs = None
     
     def add_stream(self):
