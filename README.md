@@ -3,9 +3,17 @@ Windowsにmingw-w64をインストール
 (以下のOnline installer)
 https://github.com/niXman/mingw-builds-binaries
 
+Windows Defenderにてウイルスと脅威の防止から除外→開発用・インストール先のディレクトリを許可
+
+あと、onefile(実行時に自己展開が必要)をつけるとDefenderに引っかかりやすいため、onefileは諦めた。
+dllなども同梱することにする。
+
+絵文字や記号をトリガワードに使う場合、tkinterの入力ボックスのバグのため設定画面から登録できない。
+global_settings.jsonを直接編集することで変更することができる。
+
 # ytlive_helperとは？
-YoutubeLiveの補助用ツールです。  
-コメントを受けてお題リストに追加したり、消化済みのお題をクリアしたりできます。  
+YoutubeLive/Twitchの配信に役に立つツールです。  
+コメントを受けてお題をリストに自動追加したり、消化済みのお題を自動クリアしたりできます。  
 
 動作イメージ  
 https://twitter.com/cold_planet_/status/1667364119652237312
@@ -16,10 +24,13 @@ https://twitter.com/cold_planet_/status/1667364119652237312
   - 全てのお題を忘れずに消化できる
   - どの順番で消化しても取りこぼしをなくせる
 - 配信枠やYoutubeStudioのURLから告知ツイートを作成できる
+- 配信枠に記載した情報を配信画面に自動で反映できる
+  - 配信タイトルに記載した第XXX回のようなシリーズ番号を自動取得
+  - 概要欄に記載した配信内容に関する記述を自動取得
 
 以下の環境で動作確認しています。
-- OS: Windows10 22H2
-- OBS: 29.1.2
+- OS: Windows11 25H2
+- OBS: 32.0.1
 - ウイルス対策ソフト: Windows Defender
 
 # インストール方法
@@ -31,11 +42,12 @@ https://twitter.com/cold_planet_/status/1667364119652237312
 |ファイル名|内容|
 |---|---|
 |ytlive_helper.exe|プログラム本体|
-|todolist.html|お題箱をOBSで表示するためのHTML|
 |icon.ico|本プログラムのアイコン|
-|||
-|settings.json|本プログラムの設定ファイル。初回起動時に自動生成されます。|
+|html/todolist.html|お題箱をOBSで表示するためのHTML|
+|html/todolist_noframe.html|お題箱をOBSで表示するためのHTML(文字列のみ)|
+|global_settings.json|本プログラムの設定ファイル。初回起動時に自動生成されます。|
 |todo.xml|todolist.htmlで表示するためのXMLファイル。自動生成されます。|
+|version.txt|本ツールのバージョン情報|
 
 # 使い方
 1～3が初回のみの設定で、設定後は基本的に4のみやればよいです。
@@ -43,7 +55,7 @@ https://twitter.com/cold_planet_/status/1667364119652237312
 ## 1. OBSの設定をする(初回のみ)
 1. ソースの追加 -> ブラウザを選択する。好きな名前を付けてOK。
 2. 1.で作成したブラウザソースをダブルクリックする。
-3. ローカルファイルのチェックを入れ、同梱のtodolist.htmlを選択する。
+3. ローカルファイルのチェックを入れ、同梱の```html\todolist.html```を選択する。
 4. 画面の大きさは特に変えなくてよいです(デフォ=800x600)。Alt+ドラッグでトリミングして調整できます。
 5. カスタムCSSについては、デフォルト設定だと透過されてしまうので消して良いです。または、下記のように設定することで色を付けたり、フォントを変えたりもできます。
 
@@ -73,7 +85,7 @@ todolist.htmlの77行目付近について、
 ytlive_helper.exeを実行します。  
 メニューバー内のファイル→設定から設定画面を開きます。  
 必要に応じて、リスト登録・削除のためのwordを登録してください。
-![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/87d3a735-9ded-46b8-add2-f0a4f361e72a)
+<img alt="Image" src="https://github.com/user-attachments/assets/8eb6c15b-4f35-44bd-912c-811777088ea8" />
 
 デフォルトでは,登録用ワードに```'お題 ', 'リク '```が登録してあります。(半角スペース、全角スペース両方)  
 また、デフォルトでは削除用ワードに```'リクあり', '消化済み'```が登録してあります。
@@ -87,41 +99,44 @@ ytlive_helper.exeを実行します。
 
 コメント経由でのコマンドの詳細については後述。
 
-## 3. (必要であれば)管理者IDを設定する
-リストの登録・削除については、指定した管理者IDからしか行えないようにする設定も可能です。  
-設定画面で**管理者IDのみ許可する**をチェックしてください。  
-(荒らし対策目的)
+## 3. URLを入力し、コメント取得を開始する
+配信URL入力欄にURLを入力し、**追加**をクリックします。  
+配信URL一覧にURLが表示されるので、行内をダブルクリック(または、右クリックメニューの受信開始を選択)すると、選択した配信のコメントを受信します。
 
-管理者IDを登録するには、  
-メイン画面でライブ配信のURLを入力して*start*をクリックし、  
-登録したい人のコメントをクリックしてから、  
-右クリックメニューの**管理者IDに追加**を押してください。  
-(コメント取得スレッド実行中には管理者ID一覧を修正できないので、反映したい場合は一度**stop**を押してから再度**start**してください。)
-![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/d36691f3-9f88-4dd4-9de1-a83d7e90b789)
-
-設定された管理者IDについては、設定画面から以下のように確認できます。  
-![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/ae46aaee-fd00-45a0-9322-5b474331f2f5)
-
-
-## 4. URLを入力し、コメント取得を開始する
-メイン画面の配信URL入力欄にURLを入力し、**start**をクリックします。  
-
-配信中は**●active**の文字と、配信タイトルが表示されます。  
-また、画面真ん中にお題リストが、画面下部にYoutubeLiveのコメントが表示されます。
-![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/29fed43b-efd6-45a7-9ef4-125f271b82b5)
+受信中の配信は以下のように赤くハイライトされ、Statusが**●受信中**となります。  
+また、メイン画面にはリクエスト一覧及び受信したコメントも表示されます。
 
 配信URLについては、以下のURL形式に対応しています。
 - https://www.youtube.com/watch?v=(配信ID)
 - https://studio.youtube.com/video/(配信ID)/livestreaming
 - https://studio.youtube.com/live_chat?is_popout=1&v=(配信ID)
 
-告知ボタンを押すと、ブラウザから告知ツイートをすることができます。  
-![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/11b0a4f6-c300-4eea-bd3d-33ce2b0669b0)
+**告知**ボタンを押すと、ブラウザから告知ツイートをすることができます。  
+includeの列のチェックを入れることで、
+その配信を告知ツイートに含むことができます。
+<img alt="Image" src="https://github.com/user-attachments/assets/266f977b-3d01-45c3-8a54-c5388e11ea7e" />  
+
+告知内容が決まったら、右下の**告知ツイート**をクリックすることでツイート画面が開きます。  
+<img alt="Image" src="https://github.com/user-attachments/assets/8f54866e-f8d1-4859-a4c5-727b9e9bd298" />
 
 お題リストについては、このウィンドウから登録・削除することも可能です。
 
+## 4. (必要であれば)管理者IDを設定する
+リストの登録・削除については、指定した管理者IDからしか行えないようにする設定も可能です。  
+設定画面で**管理者IDのみ許可する**をチェックしてください。
+(荒らし対策目的)
+
+管理者IDを登録するには、
+受信したコメントに対して登録したい人のコメントをクリックしてから、  
+右クリックメニューの**管理者IDに追加**を押してください。  
+<img alt="Image" src="https://github.com/user-attachments/assets/b799de83-ad9c-41a0-a88b-f5bb7941f8c6" />
+
+設定された管理者IDについては、設定画面の権限設定タブから確認できます。  
+<img alt="Image" src="https://github.com/user-attachments/assets/bf2bd35e-8df1-4035-86f9-fcfa560ade5c" />
+
+
 ## 告知ボタン使用時の各情報の自動セット(配信タイトル、今日のお題など)
-v1.0.2以降で、告知ボタン使用時に配信タイトル等の情報をOBSに反映する機能を追加しました。  
+告知ツイート時時に配信タイトル等の情報をOBSに反映する機能も用意しています。  
 告知ボタンを押すだけで、タイトルや概要欄から情報を抽出し、以下赤枠の部分を書き換えます。
 ![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/e04ffa48-216e-49ad-9b07-da450f52c388)
 
@@ -148,33 +163,37 @@ OBSのメニューバー内ツール -> obs-websocket設定 を開き、
 - OBS hostは基本的にlocalhostで良いはずですが、環境に応じてローカルIPアドレスを設定してください。
 - OBS websocket portはOBS側と同一の値に設定してください。(OBS側を変更していなければ4444)
 - OBS websocket passwordは**OBS側で設定したサーバーパスワードと同一のもの**を入力してください。ここでしか使わないような、長いだけのパスワードでいいと思います。
-![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/eacbabea-4c62-41f2-9d1d-e3cd0947af3a)
+<img alt="Image" src="https://github.com/user-attachments/assets/62e87583-2bfe-42da-8970-2f07fc6b79ed" />
 
-### 2. 告知用設定
-設定画面にて、必要に応じて告知用設定を変更します。  
-![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/f1a08ce4-7e81-49ee-b270-b0b4a43644e8)
+### 2. 情報抽出用設定
+設定画面にて、必要に応じて情報抽出のための設定を変更します。  
+<img alt="Image" src="https://github.com/user-attachments/assets/f9969407-e70f-4a7e-938e-8619cd217afb" />
 
-配信タイトル内第XXX回の部分については、数字部分を[number]と指定する。  
-**INF配信 #303**なら```#[number]```、**ほげほげ配信123日目**なら```[number]日目```と指定すればよい。
+タイトル抽出設定については、数字部分を[number]と指定する。  
+**INF配信 #303**なら```#[number]```、**ほげほげ配信123日目**なら```[number]日目```と指定すればよいです。
 
-概要欄の配信内容部分(ythTodayContent)については、  
+base_title除外パターンについては、例えば**【】**を登録しておけば
+【神回】皆伝たぬきのINFINITAS配信【超絶かわいい】という
+タイトルから```皆伝たぬきのINFINITAS配信```のみを抽出できます。
+
+配信内容取得設定については、
 指定した文字列が含まれる行の次の行全体が本日の内容として使われます。  
 概要欄が以下の場合、**copulaパック少しやる、12未クリア周回の続き**の部分となります。
 ![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/ee456b39-4c6b-4cca-8983-4a26302deaf5)
 
 ### 3. 情報反映のためのOBS設定
-指定したソース名のテキストソースがあれば値を変更します。  
+指定したソース名のテキストソースがあれば自動で文字列を変更します。  
 ソース追加->テキスト(GDI+)でテキストソースを追加し、ソース名を以下の通りに指定してください。  
 (ソースを右クリック→名前を変更で変更可能)
 
-ソース名が完全に一致しないと動作しないので注意。  
+**ソース名が完全に一致しないと動作しないので注意**。  
 ![image](https://github.com/dj-kata/ytlive_helper/assets/61326119/9d2bd492-6ef0-4d60-b4b0-fa2146bb582d)
 
 |テキストソース名|内容|
 |-|-|
-|ythMainTitle|配信タイトルのメイン部分がセットされる。【神回】のようにカッコで囲まれた部分は削除される。上記例の場合、**九段たぬきのDP配信**が書き込まれる。|
-|ythSeriesNum|配信タイトルの第XXX回目部分がセットされる。上記例の場合、**#303**が書き込まれる。|
-|ythTodayContent|本日の内容がセットされる。2.の概要欄例の場合、ここに**copulaパック少しやる、12未クリア周回の続き**が書き込まれる。|
+|ythMainTitle|配信タイトルのメイン部分がセットされる。【神回】のようにカッコで囲まれた部分は削除される。上記例の場合、```九段たぬきのDP配信```が書き込まれる。|
+|ythSeriesNum|配信タイトルの第XXX回目部分がセットされる。上記例の場合、```#303```が書き込まれる。|
+|ythTodayContent|本日の内容がセットされる。2.の概要欄例の場合、ここに```copulaパック少しやる、12未クリア周回の続き```が書き込まれる。|
 
 フォント・サイズ・色などのデザインは自由に変更できます。
 
@@ -211,19 +230,30 @@ OBSのメニューバー内ツール -> obs-websocket設定 を開き、
 **削除だけは管理者IDだけが行えるように**したほうが安全かもしれません。
 
 # (開発者向け)ビルド方法
-Windows版Python3をインストールし、必要なパッケージをpipでインストールした上で下記を実行します。
+Windows版uvをインストールし、Makefileにuvのパスを記載した上で以下のようにすればビルドできます。  
+TwitchAPIのキーについては公開できないので、generate_twitch_secret.pyから必要なファイルを生成してください。
 ```
-pyinstaller ytlive_helper.py --clean --noconsole --onefile --icon=icon.ico
+git clone https://github.com/dj-kata/ytlive_helper.git
+cd ytlive_helper
+
+uv sync
+
+# (Makefile編集)
+# twitch_config.jsonを準備
+uv run generate_twitch_secret.py
+
+make
 ```
 
 # ライセンス
 Apache License 2.0に準じるものとします。
 
 非営利・営利問わず配信などに使っていただいて問題ありません。  
-クレジット表記も特に必要ないですが、以下のように書いて宣伝してくださると喜びます。
+クレジット表記も特に必須とはしませんが、以下のように書いて宣伝してくださるととても喜びます。
 
 ```
-お題箱システム: ytlive_helper (https://github.com/dj-kata/ytlive_helper)
+お題箱システム: ytlive_helper
+https://github.com/dj-kata/ytlive_helper
 ```
 
 # 連絡先
