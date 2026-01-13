@@ -1,0 +1,17 @@
+[project]
+name = "ytlive-helper-v2"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "bs4>=0.0.2",
+    "cx-freeze>=8.5.3",
+    "numpy>=2.4.0",
+    "obsws-python>=1.8.0",
+    "packaging>=25.0",
+    "pillow>=12.1.0",
+    "pytchat>=0.5.5",
+    "requests>=2.32.5",
+    "twitchapi>=4.5.0",
+]

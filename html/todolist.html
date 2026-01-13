@@ -42,7 +42,7 @@
         <script>
         function loadXml() {
             var getxml = $.ajax({
-                url: './todo.xml',
+                url: '../todo.xml',
                 type: 'GET',
                 dataType: 'xml',
                 cache: false
@@ -52,10 +52,17 @@
                 var out = "";
                 $('#todo tbody').html("");
                 $(xml).find("TODOs item").each(function(index, item){
-                    todo=$(item).html()
-                    var idx_mod = index+1;
-
-                    out +='<tr><td><font color="#aaffaa">'+idx_mod+'</font></td><td><font color="#ffffff">'+todo+'</font></td></tr>';
+                    var idx=Number($(item).find('idx').text());
+                    var title=$(item).find('title').text();
+                    var author=$(item).find('name').text();
+                    var platform=$(item).find('platform').text();
+                    if (platform == "manual"){
+                        author="";
+                        platform="";
+                    }else{
+                        title += " ("+ author +"さん)"
+                    }
+                    out +='<tr><td><font color="#aaffaa">'+idx+'</font></td><td><font color="#ffffff">'+title+'</font></td></tr>';
                 $('#todo tbody').html(out);
             });
             getxml.fail(function(err) {
