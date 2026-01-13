@@ -11,3 +11,6 @@ twitch_config.json
 ytlive_helper/*
 ytlive_helper.dist/*
 ytlive_helper.build/*
+requests.json
+todo.xml
+log/*
