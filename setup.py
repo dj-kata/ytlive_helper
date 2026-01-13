@@ -12,13 +12,13 @@ import sys
 import os
 from cx_Freeze import setup, Executable
 
+# 出力ディレクトリ名を指定（シンプルな名前に変更）
+OUTPUT_DIR = "ytlive_helper"  # お好みのディレクトリ名に変更可能
+
 # Pythonの標準ライブラリのパスを取得
 import sysconfig
 python_lib_path = sysconfig.get_paths()["stdlib"]
 python_lib_dynload = os.path.join(python_lib_path, "lib-dynload")
-
-# 出力ディレクトリ名を指定（シンプルな名前に変更）
-OUTPUT_DIR = "ytlive_helper"  # お好みのディレクトリ名に変更可能
 
 # アプリケーション情報
 APP_NAME = "ytlive_helper"
@@ -26,15 +26,9 @@ VERSION = "1.0.0"
 DESCRIPTION = "YouTube/Twitch配信コメント管理ツール"
 
 # ビルドに含めるファイルとモジュール
-include_files = [
-    # Pythonスクリプト
-    ("gui_components.py", "gui_components.py"),
-    ("comment_handler.py", "comment_handler.py"),
-    ("update.py", "update.py"),
-    ("lang_ja.py", "lang_ja.py"),
-    ("lang_en.py", "lang_en.py"),
-    ("obssocket.py", "obssocket.py"),
-]
+# 注意: .pyファイルはcx_Freezeが自動的に検出してコンパイルします
+# include_filesは「そのままコピー」されるファイル用です
+include_files = []
 
 # アイコンファイル（存在する場合）
 if os.path.exists("icon.ico"):
@@ -48,6 +42,13 @@ if os.path.exists("icon.png"):
 if os.path.exists("version.txt"):
     include_files.append(("version.txt", "version.txt"))
     print("Including version.txt")
+
+# ドキュメントファイル（存在する場合）
+doc_files = ["README.md", "LICENSE", "LICENSE.txt", "CHANGELOG.md"]
+for doc_file in doc_files:
+    if os.path.exists(doc_file):
+        include_files.append((doc_file, doc_file))
+        print(f"Including {doc_file}")
 
 # Pythonのencodingsフォルダを明示的に含める（重要！）
 encodings_path = os.path.join(python_lib_path, "encodings")

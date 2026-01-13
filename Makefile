@@ -8,6 +8,7 @@ version=$(shell head -n1 version.txt)
 
 all: $(target_zip)
 $(target_zip): $(target) $(html_files) version.txt
+	@rm -rf $(target_zip)
 	@cp version.txt $(project_name)
 	@cp -a html $(project_name)
 	@cp icon.ico $(project_name)
