@@ -40,6 +40,66 @@ def extract_title_info(title, pattern_series, pattern_base_title_list):
         return title, None
 
 
+class EmojiInputDialog(tk.Toplevel):
+    """絵文字・記号対応の入力ダイアログ
+    
+    tkinterのsimpledialog.askstring()は絵文字や特殊文字の入力に問題があるため、
+    Textウィジェットを使用したカスタムダイアログを実装
+    """
+    def __init__(self, parent, title, prompt):
+        super().__init__(parent)
+        self.title(title)
+        self.result = None
+        
+        # ダイアログのサイズと位置
+        self.geometry("400x150")
+        self.transient(parent)
+        self.grab_set()
+        
+        # プロンプトラベル
+        ttk.Label(self, text=prompt).pack(padx=20, pady=(20, 10))
+        
+        # Textウィジェット（1行、絵文字対応）
+        self.text_entry = tk.Text(self, height=1, width=40, font=("", 10))
+        self.text_entry.pack(padx=20, pady=(0, 10))
+        self.text_entry.focus_set()
+        
+        # Enterキーで確定
+        self.text_entry.bind("<Return>", lambda e: self.on_ok())
+        self.text_entry.bind("<Shift-Return>", lambda e: "break")  # Shift+Enterは改行させない
+        
+        # ボタンフレーム
+        button_frame = ttk.Frame(self)
+        button_frame.pack(pady=(0, 20))
+        
+        ttk.Button(button_frame, text="OK", command=self.on_ok).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="キャンセル", command=self.on_cancel).pack(side=tk.LEFT, padx=5)
+        
+        # ダイアログを中央に配置
+        self.update_idletasks()
+        x = parent.winfo_x() + (parent.winfo_width() - self.winfo_width()) // 2
+        y = parent.winfo_y() + (parent.winfo_height() - self.winfo_height()) // 2
+        self.geometry(f"+{x}+{y}")
+        
+    def on_ok(self):
+        """OKボタンが押された時の処理"""
+        # Textウィジェットから値を取得（改行を除去）
+        text = self.text_entry.get("1.0", "end-1c").strip()
+        if text:
+            self.result = text
+        self.destroy()
+        
+    def on_cancel(self):
+        """キャンセルボタンが押された時の処理"""
+        self.result = None
+        self.destroy()
+        
+    def show(self):
+        """ダイアログを表示して結果を返す"""
+        self.wait_window()
+        return self.result
+
+
 class GUIComponents:
     """GUI構築とUI更新を担当するMixinクラス"""
     
@@ -196,8 +256,8 @@ class GUIComponents:
             column = self.stream_tree.identify_column(event.x)
             column_index = int(column.replace('#', '')) - 1
             
-            # URL列（インデックス2）の場合は編集
-            if column_index == 2:
+            # URL列（インデックス3）の場合は編集
+            if column_index == 3:
                 self.edit_stream_url()
                 return
             
@@ -1086,7 +1146,13 @@ class GUIComponents:
         base_pattern_button_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
         
         def add_base_pattern():
-            pattern = simpledialog.askstring(self.strings['title_extraction']['pattern_dialog_title'], self.strings['title_extraction']['pattern_dialog_prompt'])
+            # 絵文字対応の入力ダイアログを使用
+            dialog = EmojiInputDialog(
+                settings_window,
+                self.strings['title_extraction']['pattern_dialog_title'],
+                self.strings['title_extraction']['pattern_dialog_prompt']
+            )
+            pattern = dialog.show()
             if pattern and pattern not in self.global_settings.pattern_base_title_list:
                 self.global_settings.pattern_base_title_list.append(pattern)
                 base_pattern_listbox.insert(tk.END, pattern)
@@ -1173,10 +1239,13 @@ class GUIComponents:
         push_button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         
         def add_pushword():
-            word = simpledialog.askstring(
+            # 絵文字対応の入力ダイアログを使用
+            dialog = EmojiInputDialog(
+                settings_window,
                 self.strings["dialog"]["add_word_title"], 
                 self.strings["dialog"]["add_push_word_prompt"]
             )
+            word = dialog.show()
             if word and word not in self.global_settings.pushwords:
                 self.global_settings.pushwords.append(word)
                 push_listbox.insert(tk.END, word)
@@ -1213,10 +1282,13 @@ class GUIComponents:
         pull_button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         
         def add_pullword():
-            word = simpledialog.askstring(
+            # 絵文字対応の入力ダイアログを使用
+            dialog = EmojiInputDialog(
+                settings_window,
                 self.strings["dialog"]["add_word_title"], 
                 self.strings["dialog"]["add_pull_word_prompt"]
             )
+            word = dialog.show()
             if word and word not in self.global_settings.pullwords:
                 self.global_settings.pullwords.append(word)
                 pull_listbox.insert(tk.END, word)

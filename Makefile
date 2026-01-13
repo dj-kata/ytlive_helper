@@ -12,6 +12,7 @@ $(target_zip): $(target) $(html_files) version.txt
 	@cp -a html $(project_name)
 	@cp icon.ico $(project_name)
 	@rm -rf $(project_name)/log
+	@rm -rf $(project_name)/*.json
 	@zip $(target_zip) $(project_name)/*
 
 # 	  --output-dir=$(project_name) --remove-output --onefile
