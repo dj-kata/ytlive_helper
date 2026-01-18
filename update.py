@@ -75,7 +75,7 @@ class GitHubUpdater:
         r = requests.get(url)
         soup = BeautifulSoup(r.text,features="html.parser")
         for tag in soup.find_all('a'):
-            if 'releases/tag/v.' in tag['href']:
+            if 'releases/tag/' in tag['href']:
                 ret = tag['href'].split('/')[-1]
                 break # 1番上が最新なので即break
         return ret
@@ -89,8 +89,9 @@ class GitHubUpdater:
         """
         logger.debug(f"github_repo:{self.github_author}/{self.github_repo}")
         try:
-            latest_version = self.get_latest_version()[2:]
+            latest_version = self.get_latest_version()
             download_url = f"https://github.com/{self.github_author}/{self.github_repo}/releases/download/v.{latest_version}/{self.github_repo}.zip"
+            logger.debug(f"latest_version:{latest_version}, current:{self.current_version}")
             
             # バージョン比較
             if version.parse(latest_version) > version.parse(self.current_version):

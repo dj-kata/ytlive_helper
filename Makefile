@@ -2,7 +2,7 @@ wuv=/mnt/c/Users/katao/.local/bin/uv.exe
 project_name=ytlive_helper
 target=$(project_name)/$(project_name).exe
 target_zip=$(project_name).zip
-srcs=$(subst update.py,,$(wildcard *.py)) $(wildcard *.pyw)
+srcs=$(wildcard *.py) $(wildcard *.pyw)
 html_files=$(wildcard html/*.html)
 version=$(shell head -n1 version.txt)
 
