@@ -529,6 +529,9 @@ class YouTubeCommentReceiver(CommentReceiver):
         self.callback = callback
         self.global_settings = global_settings
         self.livechat = None
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 30  # 最大再接続試行回数
+        self.reconnect_delay = 2  # 再接続までの待機時間（秒）
         
     def extract_video_id(self, url):
         """URLからビデオIDを抽出"""
@@ -553,9 +556,45 @@ class YouTubeCommentReceiver(CommentReceiver):
             video_id = url.split('/live/')[-1].split('?')[0]
         
         return video_id
+    
+    def create_livechat(self, video_id):
+        """livechatオブジェクトを作成（再接続用に分離）"""
+        debug_print(f"DEBUG: Creating pytchat.create with video_id: {video_id}")
+        
+        # interruptable=Falseでシグナルハンドラを無効化（スレッドで動作可能に）
+        # 高速化のために内部ポーリング間隔を短縮（monkey patch）
+        try:
+            import pytchat.core.livechat as ptc_livechat
+            # pytchatのデフォルトポーリング間隔を短縮
+            if hasattr(ptc_livechat, '_POLLING_INTERVAL'):
+                original_interval = ptc_livechat._POLLING_INTERVAL
+                ptc_livechat._POLLING_INTERVAL = 1.0  # 1秒に短縮
+                debug_print(f"DEBUG: Changed pytchat polling interval from {original_interval} to 1.0")
+        except Exception as patch_error:
+            debug_print(f"DEBUG: Could not patch pytchat polling interval: {patch_error}")
+        
+        livechat = pytchat.create(video_id=video_id, interruptable=False)
+        
+        # livechatオブジェクト作成後にもポーリング間隔を設定
+        try:
+            if hasattr(livechat, 'processor'):
+                processor = livechat.processor
+                if hasattr(processor, 'continuation'):
+                    continuation = processor.continuation
+                    if hasattr(continuation, 'fetch_interval'):
+                        original = getattr(continuation, 'fetch_interval', None)
+                        continuation.fetch_interval = 1.0
+                        debug_print(f"DEBUG: Set livechat fetch_interval to 1.0 (was: {original})")
+        except Exception as patch_error:
+            debug_print(f"DEBUG: Could not patch livechat fetch_interval: {patch_error}")
+        
+        debug_print(f"DEBUG: pytchat.create successful, livechat object created")
+        return livechat
         
     def start(self):
-        """pytchatを使ったコメント受信"""
+        """pytchatを使ったコメント受信（自動再接続対応）"""
+        video_id = None
+        
         try:
             debug_print(f"DEBUG: YouTubeCommentReceiver.start() called")
             debug_print(f"DEBUG: Thread ID: {threading.current_thread().ident}")
@@ -567,123 +606,178 @@ class YouTubeCommentReceiver(CommentReceiver):
                 return
                 
             debug_print(f"DEBUG: Extracted video_id: {video_id}")
-            debug_print(f"DEBUG: Creating pytchat.create with video_id: {video_id}")
             
-            # interruptable=Falseでシグナルハンドラを無効化（スレッドで動作可能に）
-            # 
-            # 高速化のために内部ポーリング間隔を短縮（monkey patch）
+        except Exception as e:
+            logger.error(f"YouTube initialization error: {e}")
+            debug_print(f"ERROR: YouTube initialization error: {e}")
+            return
+        
+        # 再接続ループ
+        while not self.stop_event.is_set() and self.reconnect_attempts < self.max_reconnect_attempts:
             try:
-                import pytchat.core.livechat as ptc_livechat
-                # pytchatのデフォルトポーリング間隔を短縮
-                # 注意: 内部実装に依存するため、バージョンによっては動作しない可能性
-                if hasattr(ptc_livechat, '_POLLING_INTERVAL'):
-                    original_interval = ptc_livechat._POLLING_INTERVAL
-                    ptc_livechat._POLLING_INTERVAL = 1.0  # 1秒に短縮
-                    debug_print(f"DEBUG: Changed pytchat polling interval from {original_interval} to 1.0")
-            except Exception as patch_error:
-                debug_print(f"DEBUG: Could not patch pytchat polling interval: {patch_error}")
-            
-            self.livechat = pytchat.create(video_id=video_id, interruptable=False)
-            
-            # livechatオブジェクト作成後にもポーリング間隔を設定
-            try:
-                if hasattr(self.livechat, 'processor'):
-                    processor = self.livechat.processor
-                    if hasattr(processor, 'continuation'):
-                        continuation = processor.continuation
-                        # continuation内部のポーリング間隔を短縮
-                        if hasattr(continuation, 'fetch_interval'):
-                            original = getattr(continuation, 'fetch_interval', None)
-                            continuation.fetch_interval = 1.0
-                            debug_print(f"DEBUG: Set livechat fetch_interval to 1.0 (was: {original})")
-            except Exception as patch_error:
-                debug_print(f"DEBUG: Could not patch livechat fetch_interval: {patch_error}")
-            
-            debug_print(f"DEBUG: pytchat.create successful, livechat object created")
-            debug_print(f"DEBUG: Starting comment loop")
-            
-            message_count = 0
-            get_call_count = 0
-            
-            while not self.stop_event.is_set() and self.livechat.is_alive():
-                try:
-                    get_call_count += 1
-                    if get_call_count % 100 == 0:
-                        import datetime
-                        timestamp_str = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-                        debug_print(f"DEBUG: [{timestamp_str}] YouTube: get() called {get_call_count} times")
-                    
-                    # pytchatのget()を呼び出し
-                    for comment in self.livechat.get().sync_items():
-                        if self.stop_event.is_set():
-                            break
-                        
-                        message_count += 1
-                        if message_count % 10 == 0:
+                # livechatオブジェクトを作成
+                self.livechat = self.create_livechat(video_id)
+                
+                # 接続成功したら試行回数をリセット
+                if self.reconnect_attempts > 0:
+                    logger.info(f"YouTube chat reconnected successfully (attempt {self.reconnect_attempts})")
+                    debug_print(f"DEBUG: Reconnection successful after {self.reconnect_attempts} attempts")
+                
+                self.reconnect_attempts = 0
+                debug_print(f"DEBUG: Starting comment loop")
+                
+                message_count = 0
+                get_call_count = 0
+                
+                while not self.stop_event.is_set() and self.livechat.is_alive():
+                    try:
+                        get_call_count += 1
+                        if get_call_count % 100 == 0:
                             import datetime
                             timestamp_str = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-                            debug_print(f"DEBUG: [{timestamp_str}] YouTube thread: Received {message_count} comments")
+                            debug_print(f"DEBUG: [{timestamp_str}] YouTube: get() called {get_call_count} times")
                         
-                        # コメントの実際の投稿時刻をログに記録
-                        if message_count % 10 == 1:  # 最初のコメントと10件ごと
-                            import datetime
-                            now_str = datetime.datetime.now().strftime("%H:%M:%S")
-                            comment_time_str = comment.datetime
-                            debug_print(f"DEBUG: YouTube comment - Posted: {comment_time_str}, Received: {now_str}")
-                        
-                        # 管理者判定（新形式）
-                        is_moderator = False
-                        for manager in self.global_settings.managers:
-                            if manager['platform'] == 'youtube' and manager['id'] == comment.author.channelId:
-                                is_moderator = True
+                        # pytchatのget()を呼び出し
+                        for comment in self.livechat.get().sync_items():
+                            if self.stop_event.is_set():
                                 break
                             
-                        comment_data = {
-                            'platform': 'youtube',
-                            'author': comment.author.name,
-                            'message': comment.message,
-                            'timestamp': comment.datetime,
-                            'author_id': comment.author.channelId,
-                            'is_moderator': is_moderator
-                        }
+                            message_count += 1
+                            if message_count % 10 == 0:
+                                import datetime
+                                timestamp_str = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                                debug_print(f"DEBUG: [{timestamp_str}] YouTube thread: Received {message_count} comments")
+                            
+                            # コメントの実際の投稿時刻をログに記録
+                            if message_count % 10 == 1:  # 最初のコメントと10件ごと
+                                import datetime
+                                now_str = datetime.datetime.now().strftime("%H:%M:%S")
+                                comment_time_str = comment.datetime
+                                debug_print(f"DEBUG: YouTube comment - Posted: {comment_time_str}, Received: {now_str}")
+                            
+                            # 管理者判定（新形式）
+                            is_moderator = False
+                            for manager in self.global_settings.managers:
+                                if manager['platform'] == 'youtube' and manager['id'] == comment.author.channelId:
+                                    is_moderator = True
+                                    break
+                                
+                            comment_data = {
+                                'platform': 'youtube',
+                                'author': comment.author.name,
+                                'message': comment.message,
+                                'timestamp': comment.datetime,
+                                'author_id': comment.author.channelId,
+                                'is_moderator': is_moderator
+                            }
+                            
+                            # GUIコールバック（メインループが終了している場合はスキップ）
+                            try:
+                                if not self.stop_event.is_set():
+                                    self.callback(comment_data)
+                            except Exception as callback_error:
+                                # メインループ終了時のエラーを無視
+                                if "main thread is not in main loop" in str(callback_error):
+                                    logger.debug("Main loop already terminated, stopping receiver")
+                                    return  # 完全に終了
+                                else:
+                                    logger.error(f"Error in callback: {callback_error}")
+                            
+                    except Exception as inner_e:
+                        error_str = str(inner_e)
+                        error_type = type(inner_e).__name__
                         
-                        # GUIコールバック（メインループが終了している場合はスキップ）
-                        try:
-                            if not self.stop_event.is_set():
-                                self.callback(comment_data)
-                        except Exception as callback_error:
-                            # メインループ終了時のエラーを無視
-                            if "main thread is not in main loop" in str(callback_error):
-                                logger.debug("Main loop already terminated, stopping receiver")
-                                break
-                            else:
-                                logger.error(f"Error in callback: {callback_error}")
-                        
-                except Exception as inner_e:
-                    debug_print(f"DEBUG: Error in YouTube chat loop: {inner_e}")
-                    logger.error(f"Error in YouTube chat loop: {inner_e}")
+                        # HTTP/2プロトコルエラーや接続エラーを検出
+                        if any(keyword in error_str for keyword in [
+                            'LocalProtocolError',
+                            'ConnectionInputs.RECV_PING',
+                            'ConnectionState.CLOSED',
+                            'RemoteProtocolError',
+                            'Connection reset',
+                            'Connection aborted'
+                        ]):
+                            logger.warning(f"YouTube connection error detected ({error_type}): {error_str}")
+                            debug_print(f"WARNING: YouTube connection error: {error_str}")
+                            # 内側のループを抜けて再接続を試みる
+                            break
+                        else:
+                            # その他のエラーはログに記録して継続
+                            debug_print(f"DEBUG: Error in YouTube chat loop: {inner_e}")
+                            logger.error(f"Error in YouTube chat loop: {inner_e}")
                     
-                # 最小限の待機（0.01秒）でget()を頻繁に呼び出す
-                if self.stop_event.is_set():
-                    break
-                time.sleep(0.01)
+                    # 最小限の待機（0.01秒）でget()を頻繁に呼び出す
+                    if self.stop_event.is_set():
+                        break
+                    time.sleep(0.01)
                 
-        except KeyboardInterrupt:
-            debug_print(f"DEBUG: KeyboardInterrupt detected in YouTube receiver")
-            logger.info(f"YouTube receiver interrupted by KeyboardInterrupt")
-        except SystemExit as e:
-            debug_print(f"DEBUG: SystemExit detected in YouTube receiver: {e}")
-            logger.warning(f"YouTube receiver received SystemExit: {e}")
-        except Exception as e:
-            logger.error(f"YouTube comment receiver error: {e}")
-            debug_print(f"ERROR: YouTube comment receiver error: {e}")
-            import traceback
-            debug_print(f"ERROR: Traceback: {traceback.format_exc()}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-        finally:
-            if self.livechat:
-                self.livechat.terminate()
-                debug_print(f"DEBUG: pytchat terminated")
+                # ループを抜けた理由を確認
+                if not self.livechat.is_alive():
+                    logger.warning("YouTube livechat is no longer alive, attempting reconnection...")
+                    debug_print("WARNING: livechat.is_alive() returned False")
+                    # 再接続を試みる（外側のループが継続）
+                    raise Exception("Livechat connection lost")
+                elif self.stop_event.is_set():
+                    # 正常な停止
+                    debug_print("DEBUG: Stop event detected, exiting")
+                    return
+                    
+            except KeyboardInterrupt:
+                debug_print(f"DEBUG: KeyboardInterrupt detected in YouTube receiver")
+                logger.info(f"YouTube receiver interrupted by KeyboardInterrupt")
+                return
+            except SystemExit as e:
+                debug_print(f"DEBUG: SystemExit detected in YouTube receiver: {e}")
+                logger.warning(f"YouTube receiver received SystemExit: {e}")
+                return
+            except Exception as e:
+                error_str = str(e)
+                
+                # 再接続が必要なエラーか判定
+                should_reconnect = any(keyword in error_str for keyword in [
+                    'LocalProtocolError',
+                    'RemoteProtocolError',
+                    'Connection',
+                    'Livechat connection lost'
+                ])
+                
+                if should_reconnect and not self.stop_event.is_set():
+                    self.reconnect_attempts += 1
+                    logger.warning(f"YouTube connection error, reconnecting... (attempt {self.reconnect_attempts}/{self.max_reconnect_attempts}): {e}")
+                    debug_print(f"WARNING: Reconnection attempt {self.reconnect_attempts}/{self.max_reconnect_attempts}")
+                    
+                    # livechatを終了
+                    if self.livechat:
+                        try:
+                            self.livechat.terminate()
+                        except:
+                            pass
+                        self.livechat = None
+                    
+                    # 再接続前に待機
+                    if not self.stop_event.is_set():
+                        debug_print(f"DEBUG: Waiting {self.reconnect_delay} seconds before reconnection...")
+                        time.sleep(self.reconnect_delay)
+                    # 外側のループが再度試行
+                else:
+                    # 再接続不要なエラー
+                    logger.error(f"YouTube comment receiver error: {e}")
+                    debug_print(f"ERROR: YouTube comment receiver error: {e}")
+                    import traceback
+                    debug_print(f"ERROR: Traceback: {traceback.format_exc()}")
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+                    return
+            finally:
+                if self.livechat:
+                    try:
+                        self.livechat.terminate()
+                        debug_print(f"DEBUG: pytchat terminated")
+                    except:
+                        pass
+        
+        # 最大再試行回数に達した場合
+        if self.reconnect_attempts >= self.max_reconnect_attempts:
+            logger.error(f"YouTube receiver: Maximum reconnection attempts ({self.max_reconnect_attempts}) reached, giving up")
+            debug_print(f"ERROR: Maximum reconnection attempts reached")
 
 
 class TwitchCommentReceiver(CommentReceiver):
